@@ -1,0 +1,14 @@
+{
+    "database_path": "face_database",
+    "features_file": "face_features.csv",
+    "log_file": "recognition_log.csv",
+    "attendance_file": "attendance.csv",
+    "model_path": "models",
+    "shape_predictor_path": "models/shape_predictor_68_face_landmarks.dat",
+    "face_recognition_model_path": "models/dlib_face_recognition_resnet_model_v1.dat",
+    "threshold": 0.4,
+    "max_faces": 100,
+    "api_port": 5000,
+    "camera_index": 0,
+    "use_local_models_only": true
+}
