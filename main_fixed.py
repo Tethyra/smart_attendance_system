@@ -1,3 +1,5 @@
+# 智能人脸识别系统 - 修复版
+# 修复了QStatusBar导入问题
 
 import os
 import sys
