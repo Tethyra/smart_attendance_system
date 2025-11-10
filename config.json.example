@@ -6,7 +6,7 @@
     "model_path": "models",
     "shape_predictor_path": "models/shape_predictor_68_face_landmarks.dat",
     "face_recognition_model_path": "models/dlib_face_recognition_resnet_model_v1.dat",
-    "threshold": 0.9,
+    "threshold": 0.4,
     "max_faces": 100,
     "api_port": 5000,
     "camera_index": 0,
@@ -15,11 +15,5 @@
     "mysql_port": 3306,
     "mysql_user": "root",
     "mysql_password": "123456",
-    "mysql_database": "smart_attendance",
-    "recognition_stability_threshold": 0.8,
-    "max_recognition_history": 5,
-    "face_images_per_person": 5,
-    "min_face_size": 100,
-    "recognition_fix_threshold": 0.9,
-    "min_stable_frames": 10
+    "mysql_database": "smart_attendance"
 }

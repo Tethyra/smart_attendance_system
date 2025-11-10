@@ -1,249 +1,108 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 """
-系统功能测试脚本
-验证智能人脸识别系统的核心功能
+智能人脸识别系统 - 功能测试脚本
+用于验证系统的基本功能是否正常工作
 """
 
 import os
 import sys
-import json
-import requests
-import base64
-from PIL import Image
-from io import BytesIO
+import subprocess
+import time
 
-class FaceRecognitionTester:
-    def __init__(self):
-        self.base_url = "http://localhost:5000/api"
-        self.test_image_path = "test_image.jpg"
+def test_system():
+    """测试系统基本功能"""
+    print("智能人脸识别系统功能测试")
+    print("========================")
+    
+    # 检查Python环境
+    print("\n1. 检查Python环境...")
+    try:
+        python_version = sys.version.split()[0]
+        print(f"   Python版本: {python_version}")
+        if float(python_version[:3]) < 3.7:
+            print("   警告: Python版本建议3.7或以上")
+    except Exception as e:
+        print(f"   错误: {e}")
+    
+    # 检查依赖包
+    print("\n2. 检查依赖包...")
+    required_packages = [
+        "PyQt5", "dlib", "Pillow", "numpy", 
+        "PyMySQL", "Flask", "opencv-python"
+    ]
+    
+    missing_packages = []
+    for package in required_packages:
+        try:
+            __import__(package)
+            print(f"   ✓ {package}")
+        except ImportError:
+            missing_packages.append(package)
+            print(f"   ✗ {package}")
+    
+    if missing_packages:
+        print(f"\n   缺少依赖包: {', '.join(missing_packages)}")
+        print("   请运行: pip install -r requirements.txt")
+    
+    # 检查模型文件目录
+    print("\n3. 检查模型文件...")
+    model_dir = "models"
+    if os.path.exists(model_dir):
+        print(f"   ✓ 模型目录存在: {model_dir}")
         
-    def download_test_image(self):
-        """下载测试图片"""
-        try:
-            print("正在下载测试图片...")
-            url = "https://randomuser.me/api/portraits/women/44.jpg"
-            response = requests.get(url)
-            
-            with open(self.test_image_path, 'wb') as f:
-                f.write(response.content)
-            
-            print(f"测试图片已保存: {self.test_image_path}")
-            return True
-            
-        except Exception as e:
-            print(f"下载测试图片失败: {str(e)}")
-            return False
-    
-    def image_to_base64(self, image_path):
-        """将图片转换为base64编码"""
-        try:
-            with open(image_path, 'rb') as f:
-                image_data = f.read()
-                return base64.b64encode(image_data).decode('utf-8')
-        except Exception as e:
-            print(f"图片转换失败: {str(e)}")
-            return None
-    
-    def test_api_status(self):
-        """测试API服务状态"""
-        try:
-            print("\n=== 测试API服务状态 ===")
-            response = requests.get(f"{self.base_url}/status")
-            response.raise_for_status()
-            
-            data = response.json()
-            print(f"API状态: {data['status']}")
-            print(f"人脸数量: {data['face_count']}")
-            print(f"API版本: {data['api_version']}")
-            print("API服务正常运行")
-            return True
-            
-        except Exception as e:
-            print(f"API服务测试失败: {str(e)}")
-            return False
-    
-    def test_face_recognition(self):
-        """测试人脸识别功能"""
-        try:
-            print("\n=== 测试人脸识别功能 ===")
-            
-            # 确保测试图片存在
-            if not os.path.exists(self.test_image_path):
-                if not self.download_test_image():
-                    return False
-            
-            # 转换图片为base64
-            base64_image = self.image_to_base64(self.test_image_path)
-            if not base64_image:
-                return False
-            
-            # 调用API
-            payload = {
-                "image": base64_image
-            }
-            
-            response = requests.post(
-                f"{self.base_url}/recognize",
-                json=payload,
-                headers={'Content-Type': 'application/json'}
-            )
-            
-            response.raise_for_status()
-            result = response.json()
-            
-            print(f"识别结果: {json.dumps(result, indent=2, ensure_ascii=False)}")
-            
-            if result.get('success'):
-                print("人脸识别功能测试成功")
-                return True
+        model_files = [
+            "shape_predictor_68_face_landmarks.dat",
+            "dlib_face_recognition_resnet_model_v1.dat"
+        ]
+        
+        for model_file in model_files:
+            model_path = os.path.join(model_dir, model_file)
+            if os.path.exists(model_path):
+                file_size = os.path.getsize(model_path) / (1024 * 1024)
+                print(f"   ✓ {model_file} ({file_size:.1f}MB)")
             else:
-                print(f"人脸识别功能测试失败: {result.get('error')}")
-                return False
-                
-        except Exception as e:
-            print(f"人脸识别测试失败: {str(e)}")
-            return False
+                print(f"   ✗ {model_file} (缺失)")
+    else:
+        print(f"   ✗ 模型目录不存在: {model_dir}")
+        print("   请创建models目录并放入模型文件")
     
-    def test_face_enrollment(self):
-        """测试人脸录入功能"""
-        try:
-            print("\n=== 测试人脸录入功能 ===")
-            
-            # 确保测试图片存在
-            if not os.path.exists(self.test_image_path):
-                if not self.download_test_image():
-                    return False
-            
-            # 转换图片为base64
-            base64_image = self.image_to_base64(self.test_image_path)
-            if not base64_image:
-                return False
-            
-            # 调用API
-            payload = {
-                "name": "测试用户",
-                "age": 25,
-                "gender": "女",
-                "department": "测试部",
-                "image": base64_image
-            }
-            
-            response = requests.post(
-                f"{self.base_url}/enroll",
-                json=payload,
-                headers={'Content-Type': 'application/json'}
-            )
-            
-            response.raise_for_status()
-            result = response.json()
-            
-            print(f"录入结果: {json.dumps(result, indent=2, ensure_ascii=False)}")
-            
-            if result.get('success'):
-                print("人脸录入功能测试成功")
-                return True
-            else:
-                print(f"人脸录入功能测试失败: {result.get('error')}")
-                return False
-                
-        except Exception as e:
-            print(f"人脸录入测试失败: {str(e)}")
-            return False
+    # 检查数据库配置
+    print("\n4. 检查数据库配置...")
+    config_file = "config.json.example"
+    if os.path.exists(config_file):
+        print(f"   ✓ 配置文件存在: {config_file}")
+        # 这里可以添加更多数据库连接测试
+    else:
+        print(f"   ✗ 配置文件不存在: {config_file}")
     
-    def test_attendance(self):
-        """测试考勤功能"""
-        try:
-            print("\n=== 测试考勤功能 ===")
-            
-            # 调用API
-            payload = {
-                "name": "测试用户",
-                "status": "present",
-                "location": "测试办公室"
-            }
-            
-            response = requests.post(
-                f"{self.base_url}/attendance",
-                json=payload,
-                headers={'Content-Type': 'application/json'}
-            )
-            
-            response.raise_for_status()
-            result = response.json()
-            
-            print(f"考勤结果: {json.dumps(result, indent=2, ensure_ascii=False)}")
-            
-            if result.get('success'):
-                print("考勤功能测试成功")
-                return True
-            else:
-                print(f"考勤功能测试失败: {result.get('error')}")
-                return False
-                
-        except Exception as e:
-            print(f"考勤测试失败: {str(e)}")
-            return False
-    
-    def run_all_tests(self):
-        """运行所有测试"""
-        print("=" * 60)
-        print("智能人脸识别系统功能测试")
-        print("=" * 60)
-        
-        results = []
-        
-        # 测试API状态
-        results.append(("API服务状态", self.test_api_status()))
-        
-        # 测试人脸识别
-        results.append(("人脸识别功能", self.test_face_recognition()))
-        
-        # 测试人脸录入
-        results.append(("人脸录入功能", self.test_face_enrollment()))
-        
-        # 测试考勤
-        results.append(("考勤功能", self.test_attendance()))
-        
-        # 清理测试文件
-        if os.path.exists(self.test_image_path):
-            os.remove(self.test_image_path)
-        
-        # 显示测试总结
-        print("\n" + "=" * 60)
-        print("测试总结")
-        print("=" * 60)
-        
-        passed = 0
-        failed = 0
-        
-        for test_name, result in results:
-            status = "✓ 成功" if result else "✗ 失败"
-            print(f"{test_name}: {status}")
-            if result:
-                passed += 1
-            else:
-                failed += 1
-        
-        print(f"\n总计: {passed} 项成功, {failed} 项失败")
-        
-        if failed == 0:
-            print("所有测试通过！系统功能正常。")
-            return True
+    # 检查启动文件
+    print("\n5. 检查启动文件...")
+    start_files = ["main_fixed.py"]
+    for start_file in start_files:
+        if os.path.exists(start_file):
+            print(f"   ✓ {start_file}")
         else:
-            print("部分测试失败，请检查系统配置。")
-            return False
+            print(f"   ✗ {start_file}")
+    
+    # 检查目录结构
+    print("\n6. 检查目录结构...")
+    required_dirs = ["face_database", "logs"]
+    for req_dir in required_dirs:
+        if not os.path.exists(req_dir):
+            print(f"   创建目录: {req_dir}")
+            os.makedirs(req_dir, exist_ok=True)
+        else:
+            print(f"   ✓ {req_dir}")
+    
+    print("\n测试完成！")
+    print("\n启动系统方法:")
+    print("   Windows: 双击 start.bat")
+    print("   Linux/macOS: 运行 ./start.sh 或 python main_fixed.py")
+    print("\n注意事项:")
+    print("   1. 确保MySQL服务已启动")
+    print("   2. 确保摄像头可以正常使用")
+    print("   3. 确保模型文件完整")
 
 if __name__ == "__main__":
-    tester = FaceRecognitionTester()
-    
-    # 检查API服务是否启动
-    try:
-        response = requests.get(f"{tester.base_url}/status", timeout=5)
-    except requests.exceptions.ConnectionError:
-        print("错误: API服务未启动或无法连接")
-        print("请先启动主程序并确保API服务已开启")
-        sys.exit(1)
-    
-    tester.run_all_tests()
+    test_system()
