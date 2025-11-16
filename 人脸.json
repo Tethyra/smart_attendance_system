@@ -1,0 +1,25 @@
+{
+    "张三": {
+        "features": [],
+        "images": [],
+        "info": {
+            "age": 25,
+            "gender": "男",
+            "department": "营销",
+            "created_at": "2025-11-06T15:26:41"
+        },
+        "photo_count": 0
+    },
+    "周顺祥": {
+        "features": [],
+        "images": [
+            "face_database\\face_images\\周顺祥\\face_20251111_160723.jpg"
+        ],
+        "info": {
+            "age": "23",
+            "gender": "男",
+            "department": "主管",
+            "created_at": "2025-11-11T16:07:25.959842"
+        }
+    }
+}

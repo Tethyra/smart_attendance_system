@@ -1,0 +1,112 @@
+[2025-11-11 18:20:33] 创建数据文件: recognition_log.csv
+[2025-11-11 18:20:33] 创建数据文件: attendance.csv
+[2025-11-11 18:20:33] 数据库初始化失败: 'cryptography' package is required for sha256_password or caching_sha2_password auth methods
+[2025-11-11 18:20:33] 人脸检测器加载成功
+[2025-11-11 18:20:33] 特征点预测器文件大小: 95.1MB
+[2025-11-11 18:20:34] 特征点预测器加载成功: models/shape_predictor_68_face_landmarks.dat
+[2025-11-11 18:20:34] 人脸识别模型文件大小: 21.4MB
+[2025-11-11 18:20:34] 人脸识别模型加载成功
+[2025-11-11 18:20:34] 模型完整性检查通过
+[2025-11-11 18:20:34] 模型初始化完成
+[2025-11-11 18:20:34] API服务启动成功，端口: 5000
+[2025-11-11 18:20:34] 从文件加载 0 个用户
+[2025-11-11 18:20:34] 人脸数据库加载完成
+[2025-11-11 18:20:34] 系统启动成功
+[2025-11-11 18:20:54] 摄像头启动成功
+[2025-11-11 18:20:54] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:54] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:54] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:54] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:54] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:54] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:54] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:54] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:54] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:54] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:54] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:54] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:55] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:56] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:57] 人脸检测失败: Unsupported image type, must be 8bit gray or RGB image.
+[2025-11-11 18:20:58] 摄像头停止成功
+[2025-11-11 18:20:59] 系统关闭
