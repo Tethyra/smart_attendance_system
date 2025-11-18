@@ -224,62 +224,6 @@ API 服务启动后，可通过以下地址访问：
 
 * `model_paths`：模型文件路径
 
-## 修复工具使用
-
-### 人脸丢失数据修复
-
-
-
-```
-python modify\_face\_lost.py
-
-python modify\_face\_lost\_v2.py
-
-python update\_face\_lost.py
-```
-
-### 信息数据修复
-
-
-
-```
-python fix\_missing\_info.py
-
-python update\_user\_info.py
-
-python modify\_age\_gender.py
-```
-
-### API 服务修复
-
-
-
-```
-python fix\_api\_service.py
-```
-
-### 识别结果修复
-
-
-
-```
-python fix\_fixed\_recognition\_save.py
-
-python modify\_fixed\_recognition.py
-```
-
-### 综合修复
-
-
-
-```
-python face\_attendance\_fixer.py
-
-python diagnose\_models.py
-
-python apply\_modifications.py
-```
-
 ## 项目结构
 
 
