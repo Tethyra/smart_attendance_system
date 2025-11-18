@@ -1,349 +1,101 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-智能人脸识别系统 - 主程序
-创新功能：情感识别、年龄性别预测、口罩检测、实时跟踪、考勤系统、API服务
-"""
-import os
 import sys
-import warnings
-import time
-import csv
+import os
 import json
-import sqlite3
-import threading
 import numpy as np
-from datetime import datetime
-from collections import defaultdict
+from collections import defaultdict, deque
+from datetime import datetime, timedelta
+import csv
+import traceback
+import webbrowser  # 新增导入
 
-# 忽略警告
-warnings.filterwarnings('ignore')
-
-# GUI相关导入
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QLabel, QPushButton, QLineEdit, QTextEdit, QFileDialog, 
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+                             QLabel, QPushButton, QTextEdit, QLineEdit, QGroupBox, QGridLayout,
+                             QSpacerItem, QSizePolicy, QCheckBox, QFormLayout, QScrollArea,
+                             QDialog, QListWidget, QListWidgetItem, QSplitter, QMenu, QAction,
                              QMessageBox, QTableWidget, QTableWidgetItem, QTabWidget,
-                             QProgressBar, QGroupBox, QGridLayout, QSpacerItem, QSizePolicy,
-                             QCheckBox, QFormLayout, QScrollArea)
-from PyQt5.QtGui import (QImage, QPixmap, QFont, QColor, QMovie, QIcon)
-from PyQt5.QtCore import (Qt, QTimer, pyqtSignal, QThread, qVersion)
+                             QProgressBar, QHeaderView)
+from PyQt5.QtGui import (QImage, QPixmap, QFont, QColor, QMovie, QIcon, QPainter, QPen)
+from PyQt5.QtCore import (Qt, QTimer, pyqtSignal, QThread, qVersion, QPoint, QSize)
 
-# 图像处理相关导入
-from PIL import Image, ImageDraw, ImageFont
-import dlib
+# 导入自定义模块
+from models import FaceRecognitionModels
+from database import FaceRecognitionDatabase
+from camera import FaceRecognitionCamera
+from utils import FaceRecognitionUtils
+from config import FaceRecognitionConfig
+
+# API服务导入 - 更健壮的导入方式
+API_AVAILABLE = False
+FaceRecognitionAPI = None
+create_production_api = None
+
+try:
+    from api_service import FaceRecognitionAPI, create_production_api
+
+    API_AVAILABLE = True
+except ImportError as e:
+    API_AVAILABLE = False
+    print(f"API模块导入失败: {str(e)}")
+
+
+    # 创建一个空的占位类，避免后续代码出错
+    class FaceRecognitionAPI:
+        def __init__(self, parent):
+            self.parent = parent
+            self.is_running = False
+
+        def start_service(self):
+            self.parent.update_log("API服务不可用，请创建api_service.py文件")
+            return False
+
+        def stop_service(self):
+            return True
+
+
+    def create_production_api(parent):
+        return None
+
 
 class FaceRecognitionSystem(QMainWindow):
     """智能人脸识别系统主类"""
-    
+
     def __init__(self):
         super().__init__()
-        
+        # 初始化配置
+        self.config = FaceRecognitionConfig()
         # 初始化模型状态（必须在init_ui之前）
         self.model_status = "未检查"
-        
-        # 系统配置
-        self.config = self.load_config()
-        
         # 初始化UI（必须在update_log之前）
         self.init_ui()
-        
-        # 初始化目录
-        self.init_directories()
-        
-        # 初始化模型
-        self.init_models()
-        
         # 初始化数据结构
         self.init_data_structures()
-        
-        # 初始化摄像头和定时器
-        self.init_camera_and_timers()
-        
-        # 初始化API服务
-        self.init_api_service()
-        
+        # 初始化工具类
+        self.utils = FaceRecognitionUtils(self)
+        # 初始化数据库
+        self.database = FaceRecognitionDatabase(self)
+        # 初始化模型
+        self.models = FaceRecognitionModels(self)
+        # 初始化摄像头
+        self.camera = FaceRecognitionCamera(self)
         # 加载人脸数据库
         self.load_face_database()
-        
         # 系统启动信息
         self.update_log("系统启动成功")
         self.update_status("就绪")
-    
-    def load_config(self):
-        """加载配置文件"""
-        default_config = {
-            'database_path': 'face_database',
-            'features_file': 'face_features.csv',
-            'log_file': 'recognition_log.csv',
-            'attendance_file': 'attendance.csv',
-            'model_path': 'models',
-            'shape_predictor_path': 'models/shape_predictor_68_face_landmarks.dat',
-            'face_recognition_model_path': 'models/dlib_face_recognition_resnet_model_v1.dat',
-            'threshold': 0.4,
-            'max_faces': 100,
-            'api_port': 5000,
-            'camera_index': 0,
-            'use_local_models_only': True
-        }
-        
-        try:
-            if os.path.exists('config.json'):
-                with open('config.json', 'r', encoding='utf-8') as f:
-                    user_config = json.load(f)
-                    # 合并配置
-                    for key, value in user_config.items():
-                        if key in default_config:
-                            default_config[key] = value
-        except Exception as e:
-            self.update_log(f"加载配置文件失败: {str(e)}")
-        
-        return default_config
-    
-    def save_config(self):
-        """保存配置文件"""
-        try:
-            with open('config.json', 'w', encoding='utf-8') as f:
-                json.dump(self.config, f, indent=4, ensure_ascii=False)
-            self.update_log("配置文件保存成功")
-        except Exception as e:
-            self.update_log(f"保存配置文件失败: {str(e)}")
-    
-    def init_directories(self):
-        """初始化目录"""
-        # 创建必要的目录
-        directories = [
-            self.config['database_path'],
-            self.config['model_path'],
-            'logs'
-        ]
-        
-        for dir_path in directories:
-            if not os.path.exists(dir_path):
-                os.makedirs(dir_path)
-                self.update_log(f"创建目录: {dir_path}")
-        
-        # 初始化数据文件
-        data_files = {
-            'features_file': os.path.join(self.config['database_path'], self.config['features_file']),
-            'log_file': os.path.join('logs', self.config['log_file']),
-            'attendance_file': os.path.join('logs', self.config['attendance_file'])
-        }
-        
-        for file_name, file_path in data_files.items():
-            if not os.path.exists(file_path):
-                with open(file_path, 'w', encoding='utf-8', newline='') as f:
-                    if file_name == 'features_file':
-                        writer = csv.writer(f)
-                        writer.writerow(['name', 'timestamp'] + [f'feature_{i}' for i in range(128)])
-                    elif file_name == 'log_file':
-                        writer = csv.writer(f)
-                        writer.writerow(['timestamp', 'name', 'confidence', 'status', 'method'])
-                    elif file_name == 'attendance_file':
-                        writer = csv.writer(f)
-                        writer.writerow(['timestamp', 'name', 'status', 'location'])
-                self.update_log(f"创建数据文件: {file_path}")
-        
-        # 初始化SQLite数据库
-        self.init_database()
-    
-    def init_database(self):
-        """初始化SQLite数据库"""
-        try:
-            self.db_conn = sqlite3.connect('face_system.db')
-            cursor = self.db_conn.cursor()
-            
-            # 创建用户表
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT UNIQUE NOT NULL,
-                    age INTEGER,
-                    gender TEXT,
-                    department TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
-            # 创建人脸识别记录表
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS recognition_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    confidence REAL,
-                    status TEXT,
-                    method TEXT,
-                    image_path TEXT,
-                    FOREIGN KEY (user_id) REFERENCES users (id)
-                )
-            ''')
-            
-            # 创建考勤表
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS attendance (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER,
-                    check_in_time TIMESTAMP,
-                    check_out_time TIMESTAMP,
-                    status TEXT,
-                    location TEXT,
-                    FOREIGN KEY (user_id) REFERENCES users (id)
-                )
-            ''')
-            
-            self.db_conn.commit()
-            self.update_log("SQLite数据库初始化成功")
-            
-        except Exception as e:
-            self.update_log(f"数据库初始化失败: {str(e)}")
-    
-    def init_models(self):
-        """初始化人脸识别模型"""
-        self.detector = None
-        self.predictor = None
-        self.face_recognizer = None
-        
-        try:
-            # 人脸检测器
-            self.detector = dlib.get_frontal_face_detector()
-            self.update_log("人脸检测器加载成功")
-            
-            # 特征点预测器
-            predictor_path = self.config['shape_predictor_path']
-            
-            if os.path.exists(predictor_path):
-                # 检查文件大小（降低要求到80MB）
-                file_size = os.path.getsize(predictor_path)
-                self.update_log(f"特征点预测器文件大小: {file_size / (1024*1024):.1f}MB")
-                
-                if file_size > 80 * 1024 * 1024:
-                    self.predictor = dlib.shape_predictor(predictor_path)
-                    self.update_log(f"特征点预测器加载成功: {predictor_path}")
-                elif file_size > 50 * 1024 * 1024:
-                    self.update_log(f"警告：特征点预测器文件较小，但仍尝试加载...")
-                    try:
-                        self.predictor = dlib.shape_predictor(predictor_path)
-                        self.update_log(f"特征点预测器加载成功（文件较小）")
-                    except Exception as e:
-                        self.update_log(f"特征点预测器加载失败: {str(e)}")
-                else:
-                    self.update_log(f"错误：特征点预测器文件过小，至少需要50MB")
-            else:
-                self.update_log(f"警告：特征点预测器模型未找到: {predictor_path}")
-                if not self.config['use_local_models_only']:
-                    self.update_log("尝试自动下载模型...")
-                    self.download_missing_models()
-            
-            # 人脸识别模型
-            recognition_path = self.config['face_recognition_model_path']
-            
-            if self.predictor and os.path.exists(recognition_path):
-                # 检查文件大小（大幅降低要求到20MB）
-                file_size = os.path.getsize(recognition_path)
-                self.update_log(f"人脸识别模型文件大小: {file_size / (1024*1024):.1f}MB")
-                
-                if file_size > 20 * 1024 * 1024:
-                    try:
-                        self.face_recognizer = dlib.face_recognition_model_v1(recognition_path)
-                        self.update_log(f"人脸识别模型加载成功")
-                    except Exception as e:
-                        self.update_log(f"人脸识别模型加载失败: {str(e)}")
-                else:
-                    self.update_log(f"错误：人脸识别模型文件过小，至少需要20MB")
-            elif not os.path.exists(recognition_path):
-                self.update_log(f"警告：人脸识别模型未找到: {recognition_path}")
-                if not self.config['use_local_models_only']:
-                    self.update_log("尝试自动下载模型...")
-                    self.download_missing_models()
-            else:
-                self.update_log("警告：特征点预测器未加载，跳过人脸识别模型")
-            
-            # 检查模型完整性
-            self.check_model_integrity()
-            
-            self.update_log("模型初始化完成")
-            
-        except Exception as e:
-            self.update_log(f"模型初始化失败: {str(e)}")
-            self.detector = None
-            self.predictor = None
-            self.face_recognizer = None
-            self.model_status = "错误"
-    
-    def check_model_integrity(self):
-        """检查模型完整性"""
-        if self.predictor and self.face_recognizer:
-            self.model_status = "完整"
-            self.update_log("模型完整性检查通过")
-        elif self.predictor:
-            self.model_status = "部分完整"
-            self.update_log("警告：模型不完整，部分功能受限")
-            self.update_log("提示：虽然模型不完整，但仍可使用基本的人脸检测功能")
+        self.api_service = None
+        if API_AVAILABLE:
+            try:
+                self.api_service = FaceRecognitionAPI(self)
+                self.update_log("API服务初始化完成")
+            except Exception as e:
+                self.update_log(f"API服务初始化失败: {str(e)}")
         else:
-            self.model_status = "不完整"
-            self.update_log("错误：模型不完整，无法进行人脸识别")
-        
-        # 更新状态显示
-        self.model_status_label.setText(f"模型状态: {self.model_status}")
-        if self.model_status == "完整":
-            self.model_status_label.setStyleSheet("color: green;")
-        elif self.model_status == "部分完整":
-            self.model_status_label.setStyleSheet("color: orange;")
-        else:
-            self.model_status_label.setStyleSheet("color: red;")
-    
-    def download_missing_models(self):
-        """下载缺失的模型"""
-        if self.config['use_local_models_only']:
-            self.update_log("已启用仅本地模型模式，跳过下载")
-            return
-        
-        try:
-            import requests
-            import bz2
-            import shutil
-            
-            models = {
-                'shape_predictor_path': {
-                    'url': 'http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2',
-                    'filename': 'shape_predictor_68_face_landmarks.dat.bz2'
-                },
-                'face_recognition_model_path': {
-                    'url': 'http://dlib.net/files/dlib_face_recognition_resnet_model_v1.dat.bz2',
-                    'filename': 'dlib_face_recognition_resnet_model_v1.dat.bz2'
-                }
-            }
-            
-            for config_key, model_info in models.items():
-                model_path = self.config[config_key]
-                if not os.path.exists(model_path):
-                    self.update_log(f"开始下载: {model_info['filename']}")
-                    
-                    # 创建模型目录
-                    os.makedirs(os.path.dirname(model_path), exist_ok=True)
-                    
-                    # 下载压缩文件
-                    response = requests.get(model_info['url'], stream=True, timeout=300)
-                    response.raise_for_status()
-                    
-                    bz2_path = os.path.join(self.config['model_path'], model_info['filename'])
-                    with open(bz2_path, 'wb') as f:
-                        for chunk in response.iter_content(chunk_size=8192):
-                            f.write(chunk)
-                    
-                    # 解压文件
-                    self.update_log(f"正在解压: {model_info['filename']}")
-                    with bz2.BZ2File(bz2_path) as fr, open(model_path, 'wb') as fw:
-                        shutil.copyfileobj(fr, fw)
-                    
-                    # 删除压缩文件
-                    os.remove(bz2_path)
-                    self.update_log(f"下载完成: {os.path.basename(model_path)}")
-        
-        except Exception as e:
-            self.update_log(f"模型下载失败: {str(e)}")
-    
+            self.update_log("API服务不可用，请检查依赖")
+
+    def detect_face_for_enrollment(self, image):
+        """检测录入人脸 - 委托给models类"""
+        return self.models.detect_face_for_enrollment(image)
+
     def init_data_structures(self):
         """初始化数据结构"""
         self.face_database = {}  # 人脸数据库: {name: {'features': [], 'images': [], 'info': {}}}
@@ -352,58 +104,84 @@ class FaceRecognitionSystem(QMainWindow):
         self.tracking_data = defaultdict(dict)
         self.recognition_history = []
         self.attendance_records = {}
-        
+        # 新增：人脸识别稳定性相关
+        self.recognition_results = {}  # {face_id: {'name': '', 'confidence': 0, 'history': deque()}}
+        self.stable_recognition = {}  # 稳定的识别结果
+        self.fixed_recognition = {}  # 固定的识别结果
+        # 签退人脸识别相关（修复需求3）
+        self.checkout_recognition = {}  # {name: {'required': True, 'recognized': False, 'confidence': 0}}
         # 实时状态
         self.is_camera_running = False
         self.is_recognizing = False
         self.is_recording = False
         self.is_attendance_running = False
-        
         # 统计信息
         self.total_recognitions = 0
         self.total_attendance = 0
-    
+        self.total_users = 0
+        # 考勤摄像头相关
+        self.attendance_camera = None
+        self.attendance_viewfinder = None
+        # 修复问题1和2：初始化定时器
+        self.recognition_timer = QTimer()
+        self.recognition_timer.timeout.connect(self.perform_recognition)
+        self.recognition_timer.setInterval(100)  # 10fps
+
+        # 修复问题3：添加信息数据更新定时器（每10秒更新一次）
+        self.info_update_timer = QTimer()
+        self.info_update_timer.timeout.connect(self.update_info_data)
+        self.info_update_timer.setInterval(10000)  # 10秒
+
+        # 新增：考勤记录相关
+        self.current_attendance_user = None
+        self.attendance_status = "未签到"  # 未签到, 已签到, 已签退
+        self.attendance_records_today = []
+
     def init_ui(self):
         """初始化UI界面"""
         self.setWindowTitle("智能人脸识别系统")
-        self.setGeometry(100, 100, 1200, 800)
-        self.setMinimumSize(1000, 700)
-        
+        self.setGeometry(100, 100, 1300, 850)
+        self.setMinimumSize(1100, 750)
+
         # 设置主布局
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         main_layout = QVBoxLayout(main_widget)
-        
+
         # 顶部状态栏
         self.create_status_bar(main_layout)
-        
+
         # 主标签页
         self.tabs = QTabWidget()
         self.create_tabs()
         main_layout.addWidget(self.tabs)
-        
+
         # 底部日志区域
         self.create_log_area(main_layout)
-        
+
         # 应用样式
         self.apply_styles()
-    
+
     def create_status_bar(self, parent_layout):
         """创建状态栏"""
         status_bar = QWidget()
         status_bar.setFixedHeight(40)
         status_layout = QHBoxLayout(status_bar)
         status_layout.setContentsMargins(10, 5, 10, 5)
-        
+
         # 系统信息
         self.mode_label = QLabel("模式: 人脸识别")
         self.status_label = QLabel("状态: 就绪")
         self.camera_status_label = QLabel("摄像头: 关闭")
         self.model_status_label = QLabel(f"模型状态: {self.model_status}")
-        
+
+        # 添加API状态显示
+        self.api_status_label = QLabel("API: 未启动")
+        self.api_status_label.setStyleSheet("color: gray;")
+
         # 设置初始样式
         self.camera_status_label.setStyleSheet("color: red;")
-        
+
         # 设置模型状态颜色
         if self.model_status == "完整":
             self.model_status_label.setStyleSheet("color: green;")
@@ -411,10 +189,10 @@ class FaceRecognitionSystem(QMainWindow):
             self.model_status_label.setStyleSheet("color: orange;")
         else:
             self.model_status_label.setStyleSheet("color: red;")
-        
-        # 统计信息
-        self.stats_label = QLabel("识别次数: 0 | 考勤次数: 0")
-        
+
+        # 新增：统计信息
+        self.stats_label = QLabel("用户数: 0 | 识别次数: 0 | 考勤次数: 0")
+
         status_layout.addWidget(self.mode_label)
         status_layout.addSpacing(20)
         status_layout.addWidget(self.status_label)
@@ -422,329 +200,517 @@ class FaceRecognitionSystem(QMainWindow):
         status_layout.addWidget(self.camera_status_label)
         status_layout.addSpacing(20)
         status_layout.addWidget(self.model_status_label)
+        status_layout.addSpacing(20)
+        status_layout.addWidget(self.api_status_label)  # 新增API状态显示
         status_layout.addStretch()
         status_layout.addWidget(self.stats_label)
-        
+
         parent_layout.addWidget(status_bar)
-    
+
     def create_tabs(self):
         """创建标签页"""
         # 人脸识别标签页
         self.create_recognition_tab()
-        
         # 人脸录入标签页
         self.create_enrollment_tab()
-        
-        # 数据管理标签页
-        self.create_data_management_tab()
-        
+        # 数据管理标签页 - 增强版
+        self.create_enhanced_data_management_tab()
         # 考勤管理标签页
-        self.create_attendance_tab()
-        
+        self.create_attendance_tab_with_camera()
         # 系统设置标签页
         self.create_settings_tab()
-        
+
         # 标签页切换信号
         self.tabs.currentChanged.connect(self.on_tab_changed)
-    
+
     def create_recognition_tab(self):
         """创建人脸识别标签页"""
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        
+
         # 摄像头显示区域
         self.video_label = QWidget()
         self.video_label.setFixedSize(640, 480)
         self.video_label.setLayout(QVBoxLayout())
         self.video_label.layout().setAlignment(Qt.AlignCenter)
-        
+
         # 默认显示文本
         default_text = QLabel("摄像头未启动")
         default_text.setStyleSheet("color: #aaa; font-size: 16px;")
         default_text.setAlignment(Qt.AlignCenter)
         self.video_label.layout().addWidget(default_text)
-        
+
         # 控制按钮区域
         control_layout = QHBoxLayout()
-        
         self.camera_btn = QPushButton("启动摄像头")
         self.camera_btn.clicked.connect(self.toggle_camera)
-        
         self.start_recognition_btn = QPushButton("开始识别")
         self.start_recognition_btn.clicked.connect(self.start_recognition)
-        
+        self.pause_recognition_btn = QPushButton("暂停识别")
+        self.pause_recognition_btn.clicked.connect(self.pause_recognition)
+        self.pause_recognition_btn.setEnabled(False)
         self.stop_recognition_btn = QPushButton("停止识别")
         self.stop_recognition_btn.clicked.connect(self.stop_recognition)
         self.stop_recognition_btn.setEnabled(False)
-        
+        self.clear_fixed_btn = QPushButton("清除固定结果")
+        self.clear_fixed_btn.clicked.connect(self.clear_fixed_results)
+        self.clear_fixed_btn.setEnabled(False)
+
+        # 新增：识别稳定性控制
+        self.stability_control = QCheckBox("启用识别稳定化")
+        self.stability_control.setChecked(True)
+        # 新增：识别结果固定控制
+        self.fix_result_control = QCheckBox("识别稳定后固定结果")
+        self.fix_result_control.setChecked(True)
+
         control_layout.addWidget(self.camera_btn)
         control_layout.addWidget(self.start_recognition_btn)
+        control_layout.addWidget(self.pause_recognition_btn)
         control_layout.addWidget(self.stop_recognition_btn)
-        
+        control_layout.addWidget(self.clear_fixed_btn)
+        control_layout.addWidget(self.stability_control)
+        control_layout.addWidget(self.fix_result_control)
+
         # 文件选择按钮
         file_layout = QHBoxLayout()
-        
         self.image_btn = QPushButton("选择图片")
         self.image_btn.clicked.connect(self.select_image)
-        
         self.video_btn = QPushButton("选择视频")
         self.video_btn.clicked.connect(self.select_video)
-        
         file_layout.addWidget(self.image_btn)
         file_layout.addWidget(self.video_btn)
-        
-        # 识别结果显示
+
+        # 识别结果显示 - 增强版
         result_group = QGroupBox("识别结果")
         result_layout = QGridLayout(result_group)
-        
+
+        # 主要识别结果
         self.result_label = QLabel("等待识别...")
+        self.result_label.setStyleSheet("font-size: 18px; font-weight: bold;")
         self.confidence_label = QLabel("置信度: -")
-        self.age_gender_label = QLabel("年龄/性别: -")
+        self.confidence_label.setStyleSheet("font-size: 14px;")
+        # 稳定性指示
+        self.stability_label = QLabel("稳定性: -")
+        self.stability_label.setStyleSheet("font-size: 14px;")
+        # 固定状态指示
+        self.fixed_label = QLabel("状态: 实时")
+        self.fixed_label.setStyleSheet("font-size: 14px; color: blue;")
+
+        # 详细信息
+        self.age_gender_label = QLabel("年龄/性别/部门: -")
         self.emotion_label = QLabel("情绪: -")
         self.mask_label = QLabel("口罩: -")
-        
-        result_layout.addWidget(self.result_label, 0, 0)
-        result_layout.addWidget(self.confidence_label, 0, 1)
-        result_layout.addWidget(self.age_gender_label, 1, 0)
-        result_layout.addWidget(self.emotion_label, 1, 1)
-        result_layout.addWidget(self.mask_label, 2, 0)
-        
+
+        # 布局排列
+        result_layout.addWidget(self.result_label, 0, 0, 1, 2)
+        result_layout.addWidget(self.confidence_label, 1, 0)
+        result_layout.addWidget(self.stability_label, 1, 1)
+        result_layout.addWidget(self.fixed_label, 2, 0)
+        result_layout.addWidget(self.age_gender_label, 3, 0)
+        result_layout.addWidget(self.emotion_label, 3, 1)
+        result_layout.addWidget(self.mask_label, 4, 0)
+
         # 布局组装
         layout.addWidget(self.video_label, alignment=Qt.AlignCenter)
-        layout.addSpacing(10)
         layout.addLayout(control_layout)
         layout.addLayout(file_layout)
         layout.addWidget(result_group)
-        
+
         self.tabs.addTab(tab, "人脸识别")
-    
+
     def create_enrollment_tab(self):
         """创建人脸录入标签页"""
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        
-        # 录入信息表单
+
+        # 人员信息表单
         form_group = QGroupBox("人员信息")
         form_layout = QFormLayout(form_group)
-        
         self.enroll_name = QLineEdit()
         self.enroll_age = QLineEdit()
         self.enroll_gender = QLineEdit()
         self.enroll_department = QLineEdit()
-        
+
         form_layout.addRow("姓名:", self.enroll_name)
         form_layout.addRow("年龄:", self.enroll_age)
         form_layout.addRow("性别:", self.enroll_gender)
         form_layout.addRow("部门:", self.enroll_department)
-        
+
         # 录入方式选择
         method_layout = QHBoxLayout()
-        
         self.enroll_camera_btn = QPushButton("启动摄像头录入")
         self.enroll_camera_btn.clicked.connect(self.toggle_enroll_camera)
-        
         self.enroll_image_btn = QPushButton("选择图片录入")
         self.enroll_image_btn.clicked.connect(self.select_enroll_image)
-        
+        self.batch_enroll_btn = QPushButton("批量导入照片")
+        self.batch_enroll_btn.clicked.connect(self.batch_enroll_images)
+
         method_layout.addWidget(self.enroll_camera_btn)
         method_layout.addWidget(self.enroll_image_btn)
-        
-        # 录入预览
-        preview_group = QGroupBox("录入预览")
-        preview_layout = QVBoxLayout(preview_group)
-        
+        method_layout.addWidget(self.batch_enroll_btn)
+
+        # 预览和照片列表区域
+        preview_splitter = QSplitter(Qt.Horizontal)
+
+        # 摄像头预览区域
         self.enroll_preview = QWidget()
         self.enroll_preview.setFixedSize(320, 240)
         self.enroll_preview.setLayout(QVBoxLayout())
         self.enroll_preview.layout().setAlignment(Qt.AlignCenter)
-        
+
+        # 默认预览文本
         default_preview = QLabel("预览区域")
         default_preview.setStyleSheet("color: #aaa; font-size: 14px;")
         default_preview.setAlignment(Qt.AlignCenter)
         self.enroll_preview.layout().addWidget(default_preview)
-        
-        preview_layout.addWidget(self.enroll_preview, alignment=Qt.AlignCenter)
-        
+
+        # 照片列表区域
+        self.photos_list = QListWidget()
+        self.photos_list.setViewMode(QListWidget.IconMode)
+        self.photos_list.setIconSize(QSize(60, 60))
+        self.photos_list.setResizeMode(QListWidget.Adjust)
+        self.photos_list.setGridSize(QSize(70, 70))
+        self.photos_list.itemSelectionChanged.connect(self.on_photo_selection_changed)
+
+        preview_splitter.addWidget(self.enroll_preview)
+        preview_splitter.addWidget(self.photos_list)
+        preview_splitter.setSizes([320, 320])
+
         # 操作按钮
         action_layout = QHBoxLayout()
-        
         self.capture_btn = QPushButton("捕获人脸")
         self.capture_btn.clicked.connect(self.capture_face)
         self.capture_btn.setEnabled(False)
-        
+        self.delete_photo_btn = QPushButton("删除选中照片")
+        self.delete_photo_btn.clicked.connect(self.delete_selected_photo)
+        self.delete_photo_btn.setEnabled(False)
         self.save_btn = QPushButton("保存信息")
         self.save_btn.clicked.connect(self.save_enrollment)
-        
+
         action_layout.addWidget(self.capture_btn)
+        action_layout.addWidget(self.delete_photo_btn)
         action_layout.addWidget(self.save_btn)
-        
+
+        # 自动保存选项（修复需求2）
+        auto_save_layout = QHBoxLayout()
+        self.auto_save_checkbox = QCheckBox("照片录入后自动保存")
+        self.auto_save_checkbox.setChecked(self.config.get('auto_save_after_enrollment', True))
+        auto_save_layout.addWidget(self.auto_save_checkbox)
+        auto_save_layout.addStretch()
+
         # 状态信息
         self.enrollment_status = QLabel("状态：请填写人员信息并选择录入方式")
-        
+
         # 布局组装
         layout.addWidget(form_group)
         layout.addLayout(method_layout)
-        layout.addWidget(preview_group)
+        layout.addWidget(preview_splitter)
         layout.addLayout(action_layout)
+        layout.addLayout(auto_save_layout)
         layout.addWidget(self.enrollment_status)
-        
+
         self.tabs.addTab(tab, "人脸录入")
-    
-    def create_data_management_tab(self):
-        """创建数据管理标签页"""
+
+    def create_enhanced_data_management_tab(self):
+        """创建增强版数据管理标签页"""
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        
+
         # 数据表格
         self.data_table = QTableWidget()
         self.data_table.setColumnCount(6)
-        self.data_table.setHorizontalHeaderLabels(['姓名', '年龄', '性别', '部门', '录入时间', '操作'])
-        self.data_table.horizontalHeader().setStretchLastSection(True)
-        
+        self.data_table.setHorizontalHeaderLabels(['姓名', '年龄', '性别', '部门', '照片数量', '创建时间'])
+        self.data_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.data_table.verticalHeader().setVisible(False)
+        self.data_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.data_table.selectionModel().selectionChanged.connect(self.on_data_table_selection_changed)
+
         # 操作按钮
-        btn_layout = QHBoxLayout()
-        
-        self.refresh_btn = QPushButton("刷新数据")
-        self.refresh_btn.clicked.connect(self.refresh_data)
-        
+        button_layout = QHBoxLayout()
+        self.view_photos_btn = QPushButton("查看照片")
+        self.view_photos_btn.clicked.connect(self.view_user_photos)
+        self.view_photos_btn.setEnabled(False)
+        self.edit_btn = QPushButton("编辑信息")
+        self.edit_btn.clicked.connect(self.edit_user_info)
+        self.edit_btn.setEnabled(False)
         self.delete_btn = QPushButton("删除选中")
         self.delete_btn.clicked.connect(self.delete_selected)
-        
+        self.delete_btn.setEnabled(False)
+
+        button_layout.addWidget(self.view_photos_btn)
+        button_layout.addWidget(self.edit_btn)
+        button_layout.addWidget(self.delete_btn)
+
+        # 数据导入导出
+        import_export_layout = QHBoxLayout()
+        self.import_btn = QPushButton("导入数据")
+        self.import_btn.clicked.connect(self.import_data)
         self.export_btn = QPushButton("导出数据")
         self.export_btn.clicked.connect(self.export_data)
-        
-        btn_layout.addWidget(self.refresh_btn)
-        btn_layout.addWidget(self.delete_btn)
-        btn_layout.addWidget(self.export_btn)
-        
+        self.refresh_btn = QPushButton("刷新数据")
+        self.refresh_btn.clicked.connect(self.refresh_data)
+
+        import_export_layout.addWidget(self.import_btn)
+        import_export_layout.addWidget(self.export_btn)
+        import_export_layout.addWidget(self.refresh_btn)
+
         # 布局组装
         layout.addWidget(self.data_table)
-        layout.addLayout(btn_layout)
-        
+        layout.addLayout(button_layout)
+        layout.addLayout(import_export_layout)
+
         self.tabs.addTab(tab, "数据管理")
-    
-    def create_attendance_tab(self):
-        """创建考勤管理标签页"""
+
+    def create_attendance_tab_with_camera(self):
+        """创建带摄像头的考勤管理标签页"""
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        
+
+        # 考勤摄像头区域
+        attendance_camera_group = QGroupBox("考勤摄像头")
+        attendance_camera_layout = QVBoxLayout(attendance_camera_group)
+
+        # 摄像头显示
+        self.attendance_camera_label = QWidget()
+        self.attendance_camera_label.setFixedSize(320, 240)
+        self.attendance_camera_label.setLayout(QVBoxLayout())
+        self.attendance_camera_label.layout().setAlignment(Qt.AlignCenter)
+
+        # 默认文本
+        default_camera_text = QLabel("考勤摄像头已停止")
+        default_camera_text.setStyleSheet("color: #aaa; font-size: 14px;")
+        default_camera_text.setAlignment(Qt.AlignCenter)
+        self.attendance_camera_label.layout().addWidget(default_camera_text)
+
+        # 摄像头控制按钮
+        camera_control_layout = QHBoxLayout()
+        self.start_attendance_camera_btn = QPushButton("启动考勤摄像头")
+        self.start_attendance_camera_btn.clicked.connect(self.start_attendance_camera)
+        self.stop_attendance_camera_btn = QPushButton("停止考勤摄像头")
+        self.stop_attendance_camera_btn.clicked.connect(self.stop_attendance_camera)
+        self.stop_attendance_camera_btn.setEnabled(False)
+
+        camera_control_layout.addWidget(self.start_attendance_camera_btn)
+        camera_control_layout.addWidget(self.stop_attendance_camera_btn)
+
+        attendance_camera_layout.addWidget(self.attendance_camera_label)
+        attendance_camera_layout.addLayout(camera_control_layout)
+
         # 考勤控制
-        control_layout = QHBoxLayout()
-        
+        control_group = QGroupBox("考勤控制")
+        control_layout = QHBoxLayout(control_group)
         self.start_attendance_btn = QPushButton("开始考勤")
         self.start_attendance_btn.clicked.connect(self.start_attendance)
-        
         self.stop_attendance_btn = QPushButton("停止考勤")
         self.stop_attendance_btn.clicked.connect(self.stop_attendance)
         self.stop_attendance_btn.setEnabled(False)
-        
-        self.generate_report_btn = QPushButton("生成报表")
-        self.generate_report_btn.clicked.connect(self.generate_attendance_report)
-        
+
+        # 签退人脸识别控制（修复需求3）
+        self.checkout_recognition_checkbox = QCheckBox("签退需要人脸识别确认")
+        self.checkout_recognition_checkbox.setChecked(self.config.get('checkout_recognition_required', True))
+
         control_layout.addWidget(self.start_attendance_btn)
         control_layout.addWidget(self.stop_attendance_btn)
-        control_layout.addWidget(self.generate_report_btn)
-        
+        control_layout.addWidget(self.checkout_recognition_checkbox)
+
+        # 新增：考勤操作区域
+        attendance_operation_group = QGroupBox("考勤操作")
+        attendance_operation_layout = QVBoxLayout(attendance_operation_group)
+
+        # 考勤状态显示
+        self.attendance_status_label = QLabel("考勤状态: 未开始")
+        self.attendance_status_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+
+        # 当前用户显示
+        self.current_user_label = QLabel("当前用户: -")
+
+        # 操作按钮
+        operation_btn_layout = QHBoxLayout()
+        self.check_in_btn = QPushButton("签到")
+        self.check_in_btn.clicked.connect(self.check_in)
+        self.check_in_btn.setEnabled(False)
+
+        self.check_out_btn = QPushButton("签退")
+        self.check_out_btn.clicked.connect(self.check_out)
+        self.check_out_btn.setEnabled(False)
+
+        self.auto_check_btn = QPushButton("智能考勤")
+        self.auto_check_btn.clicked.connect(self.auto_attendance)
+        self.auto_check_btn.setEnabled(False)
+
+        operation_btn_layout.addWidget(self.check_in_btn)
+        operation_btn_layout.addWidget(self.check_out_btn)
+        operation_btn_layout.addWidget(self.auto_check_btn)
+
+        attendance_operation_layout.addWidget(self.attendance_status_label)
+        attendance_operation_layout.addWidget(self.current_user_label)
+        attendance_operation_layout.addLayout(operation_btn_layout)
+
         # 考勤记录表格
+        attendance_record_group = QGroupBox("今日考勤记录")
+        attendance_record_layout = QVBoxLayout(attendance_record_group)
+
         self.attendance_table = QTableWidget()
-        self.attendance_table.setColumnCount(5)
-        self.attendance_table.setHorizontalHeaderLabels(['姓名', '签到时间', '签退时间', '状态', '位置'])
-        self.attendance_table.horizontalHeader().setStretchLastSection(True)
-        
+        self.attendance_table.setColumnCount(6)
+        self.attendance_table.setHorizontalHeaderLabels(['姓名', '签到时间', '签退时间', '状态', '位置', '工作时长'])
+        self.attendance_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.attendance_table.verticalHeader().setVisible(False)
+
+        # 考勤统计
+        stats_layout = QHBoxLayout()
+        self.attendance_stats_label = QLabel("今日统计: 签到 0 人 | 签退 0 人 | 缺勤 0 人")
+
+        self.refresh_attendance_btn = QPushButton("刷新记录")
+        self.refresh_attendance_btn.clicked.connect(self.refresh_attendance_records)
+
+        stats_layout.addWidget(self.attendance_stats_label)
+        stats_layout.addStretch()
+        stats_layout.addWidget(self.refresh_attendance_btn)
+
+        attendance_record_layout.addWidget(self.attendance_table)
+        attendance_record_layout.addLayout(stats_layout)
+
         # 布局组装
-        layout.addLayout(control_layout)
-        layout.addWidget(self.attendance_table)
-        
+        layout.addWidget(attendance_camera_group)
+        layout.addWidget(control_group)
+        layout.addWidget(attendance_operation_group)
+        layout.addWidget(attendance_record_group)
+
         self.tabs.addTab(tab, "考勤管理")
-    
+
     def create_settings_tab(self):
         """创建系统设置标签页"""
         tab = QWidget()
-        layout = QVBoxLayout(tab)
-        
-        # 使用滚动区域
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
         settings_widget = QWidget()
         settings_layout = QVBoxLayout(settings_widget)
-        
-        # 模型设置
-        model_group = QGroupBox("模型设置")
-        model_form = QFormLayout(model_group)
-        
-        self.shape_predictor_edit = QLineEdit(self.config['shape_predictor_path'])
-        self.face_recognizer_edit = QLineEdit(self.config['face_recognition_model_path'])
-        self.use_local_checkbox = QCheckBox("仅使用本地模型（禁用自动下载）")
-        self.use_local_checkbox.setChecked(self.config['use_local_models_only'])
-        
-        model_form.addRow("特征点预测器路径:", self.shape_predictor_edit)
-        model_form.addRow("人脸识别模型路径:", self.face_recognizer_edit)
-        model_form.addRow("", self.use_local_checkbox)
-        
-        # 系统设置
-        system_group = QGroupBox("系统设置")
-        system_form = QFormLayout(system_group)
-        
-        self.threshold_edit = QLineEdit(str(self.config['threshold']))
-        self.api_port_edit = QLineEdit(str(self.config['api_port']))
-        self.camera_index_edit = QLineEdit(str(self.config['camera_index']))
-        
-        system_form.addRow("识别阈值 (0.0-1.0):", self.threshold_edit)
-        system_form.addRow("API服务端口:", self.api_port_edit)
-        system_form.addRow("摄像头索引:", self.camera_index_edit)
-        
-        # API设置
-        api_group = QGroupBox("API服务设置")
-        api_layout = QHBoxLayout(api_group)
-        
+
+        # API服务控制组
+        api_group = QGroupBox("API服务控制")
+        api_layout = QVBoxLayout(api_group)
+
+        api_control_layout = QHBoxLayout()
         self.start_api_btn = QPushButton("启动API服务")
         self.start_api_btn.clicked.connect(self.start_api_service)
-        
         self.stop_api_btn = QPushButton("停止API服务")
         self.stop_api_btn.clicked.connect(self.stop_api_service)
         self.stop_api_btn.setEnabled(False)
-        
-        api_layout.addWidget(self.start_api_btn)
-        api_layout.addWidget(self.stop_api_btn)
-        
+
+        # 新增：打开API测试页面按钮
+        self.open_test_page_btn = QPushButton("打开API测试页面")
+        self.open_test_page_btn.clicked.connect(self.open_api_test_page)
+        self.open_test_page_btn.setEnabled(False)  # 初始状态为禁用
+
+        api_control_layout.addWidget(self.start_api_btn)
+        api_control_layout.addWidget(self.stop_api_btn)
+        api_control_layout.addWidget(self.open_test_page_btn)  # 添加新按钮
+        api_control_layout.addStretch()
+
+        api_info_layout = QHBoxLayout()
+        self.api_info_label = QLabel(f"API服务状态: 未启动 | 端口: {self.config.get('api_port', 5000)}")
+        api_info_layout.addWidget(self.api_info_label)
+        api_info_layout.addStretch()
+
+        api_layout.addLayout(api_control_layout)
+        api_layout.addLayout(api_info_layout)
+
+        # 模型配置
+        model_group = QGroupBox("模型配置")
+        model_form = QFormLayout(model_group)
+        self.shape_predictor_edit = QLineEdit(
+            self.config.get('shape_predictor_path', 'models/shape_predictor_68_face_landmarks.dat'))
+        self.face_recognizer_edit = QLineEdit(
+            self.config.get('face_recognition_model_path', 'models/dlib_face_recognition_resnet_model_v1.dat'))
+        self.use_local_checkbox = QCheckBox("仅使用本地模型")
+        self.use_local_checkbox.setChecked(self.config.get('use_local_models_only', True))
+
+        model_form.addRow("特征点预测器路径:", self.shape_predictor_edit)
+        model_form.addRow("人脸识别模型路径:", self.face_recognizer_edit)
+        model_form.addRow(self.use_local_checkbox)
+
+        # MySQL数据库配置
+        mysql_group = QGroupBox("MySQL数据库配置")
+        mysql_form = QFormLayout(mysql_group)
+        self.mysql_host_edit = QLineEdit(self.config.get('mysql_host', 'localhost'))
+        self.mysql_port_edit = QLineEdit(str(self.config.get('mysql_port', 3306)))
+        self.mysql_user_edit = QLineEdit(self.config.get('mysql_user', 'root'))
+        self.mysql_password_edit = QLineEdit(self.config.get('mysql_password', '123456'))
+        self.mysql_database_edit = QLineEdit(self.config.get('mysql_database', 'smart_attendance'))
+
+        mysql_form.addRow("主机地址:", self.mysql_host_edit)
+        mysql_form.addRow("端口:", self.mysql_port_edit)
+        mysql_form.addRow("用户名:", self.mysql_user_edit)
+        mysql_form.addRow("密码:", self.mysql_password_edit)
+        mysql_form.addRow("数据库名:", self.mysql_database_edit)
+
+        # 识别设置
+        recognition_group = QGroupBox("识别设置")
+        recognition_form = QFormLayout(recognition_group)
+        self.threshold_edit = QLineEdit(str(self.config.get('threshold', 0.4)))
+        self.stability_threshold_edit = QLineEdit(str(self.config.get('recognition_stability_threshold', 0.15)))
+        self.fix_threshold_edit = QLineEdit(str(self.config.get('recognition_fix_threshold', 0.8)))
+        self.min_stable_frames_edit = QLineEdit(str(self.config.get('min_stable_frames', 3)))
+        self.min_face_size_edit = QLineEdit(str(self.config.get('min_face_size', 100)))
+
+        recognition_form.addRow("识别阈值 (0.0-1.0):", self.threshold_edit)
+        recognition_form.addRow("稳定性阈值 (0.0-1.0):", self.stability_threshold_edit)
+        recognition_form.addRow("结果固定阈值 (0.0-1.0):", self.fix_threshold_edit)
+        recognition_form.addRow("最少稳定帧数:", self.min_stable_frames_edit)
+        recognition_form.addRow("最小人脸尺寸 (像素):", self.min_face_size_edit)
+
+        # 系统设置
+        system_group = QGroupBox("系统设置")
+        system_form = QFormLayout(system_group)
+        self.api_port_edit = QLineEdit(str(self.config.get('api_port', 5000)))
+        self.camera_index_edit = QLineEdit(str(self.config.get('camera_index', 0)))
+        self.face_images_per_person_edit = QLineEdit(str(self.config.get('face_images_per_person', 5)))
+
+        # 修复需求2：自动保存设置
+        self.auto_save_checkbox_setting = QCheckBox("人脸录入后自动保存")
+        self.auto_save_checkbox_setting.setChecked(self.config.get('auto_save_after_enrollment', True))
+
+        # 修复需求3：签退人脸识别设置
+        self.checkout_recognition_checkbox_setting = QCheckBox("签退需要人脸识别确认")
+        self.checkout_recognition_checkbox_setting.setChecked(self.config.get('checkout_recognition_required', True))
+
+        system_form.addRow("API端口:", self.api_port_edit)
+        system_form.addRow("摄像头索引:", self.camera_index_edit)
+        system_form.addRow("每人最多照片数:", self.face_images_per_person_edit)
+        system_form.addRow(self.auto_save_checkbox_setting)
+        system_form.addRow(self.checkout_recognition_checkbox_setting)
+
         # 保存按钮
-        save_btn = QPushButton("保存设置")
-        save_btn.clicked.connect(self.save_settings)
-        
+        save_layout = QHBoxLayout()
+        self.save_settings_btn = QPushButton("保存设置")
+        self.save_settings_btn.clicked.connect(lambda: self.config.save_settings(self))
+        save_layout.addWidget(self.save_settings_btn)
+        save_layout.addStretch()
+
         # 布局组装
-        settings_layout.addWidget(model_group)
-        settings_layout.addWidget(system_group)
         settings_layout.addWidget(api_group)
-        settings_layout.addWidget(save_btn)
+        settings_layout.addWidget(model_group)
+        settings_layout.addWidget(mysql_group)
+        settings_layout.addWidget(recognition_group)
+        settings_layout.addWidget(system_group)
+        settings_layout.addLayout(save_layout)
         settings_layout.addStretch()
-        
-        scroll.setWidget(settings_widget)
-        layout.addWidget(scroll)
-        
+
+        scroll_area.setWidget(settings_widget)
+        main_layout = QVBoxLayout(tab)
+        main_layout.addWidget(scroll_area)
+
         self.tabs.addTab(tab, "系统设置")
-    
-    def create_log_area(self, parent_layout):
-        """创建日志区域"""
-        log_group = QGroupBox("系统日志")
-        log_layout = QVBoxLayout(log_group)
-        
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        self.log_text.setFixedHeight(100)
-        
-        log_layout.addWidget(self.log_text)
-        parent_layout.addWidget(log_group)
-    
+
     def apply_styles(self):
         """应用样式"""
-        style = """
+        self.setStyleSheet("""
             QMainWindow {
-                background-color: #f0f0f0;
+                background-color: #f5f5f5;
             }
             QGroupBox {
                 background-color: white;
-                border: 1px solid #ddd;
+                border: 1px solid #cccccc;
                 border-radius: 4px;
                 margin-top: 10px;
             }
@@ -752,1247 +718,751 @@ class FaceRecognitionSystem(QMainWindow):
                 subcontrol-origin: margin;
                 left: 10px;
                 padding: 0 3px 0 3px;
-                color: #333;
+                color: #333333;
             }
             QPushButton {
                 background-color: #4CAF50;
                 color: white;
                 border: none;
-                padding: 8px 16px;
+                padding: 6px 12px;
                 border-radius: 4px;
-                min-width: 100px;
+                min-width: 80px;
             }
             QPushButton:hover {
                 background-color: #45a049;
             }
             QPushButton:disabled {
                 background-color: #cccccc;
+                color: #666666;
             }
             QLineEdit {
-                padding: 6px;
-                border: 1px solid #ddd;
-                border-radius: 4px;
+                padding: 4px;
+                border: 1px solid #cccccc;
+                border-radius: 3px;
+            }
+            QLabel {
+                color: #333333;
             }
             QTableWidget {
                 background-color: white;
-                border: 1px solid #ddd;
+                border: 1px solid #cccccc;
                 border-radius: 4px;
             }
-            QTableWidget::header {
-                background-color: #f5f5f5;
+            QTableWidget::item:selected {
+                background-color: #4CAF50;
+                color: white;
+            }
+            QHeaderView::section {
+                background-color: #f0f0f0;
+                padding: 4px;
+                border: 1px solid #cccccc;
             }
             QTextEdit {
-                background-color: #f9f9f9;
-                border: 1px solid #ddd;
+                background-color: white;
+                border: 1px solid #cccccc;
                 border-radius: 4px;
             }
-        """
-        self.setStyleSheet(style)
-    
-    def init_camera_and_timers(self):
-        """初始化摄像头和定时器"""
-        # 摄像头相关
-        self.camera = None
-        self.current_camera_index = self.config['camera_index']
-        self.viewfinder = None
+        """)
 
-        # 定时器
-        self.camera_timer = QTimer()
-        self.camera_timer.timeout.connect(self.update_camera_frame)
-        self.camera_timer.setInterval(30)  # 33fps
+    def update_status(self, status):
+        """更新状态显示"""
+        self.status_label.setText(f"状态: {status}")
 
-        self.recognition_timer = QTimer()
-        self.recognition_timer.timeout.connect(self.perform_recognition)
-        self.recognition_timer.setInterval(100)  # 10fps
+    def update_log(self, message):
+        """更新日志"""
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        log_message = f"[{timestamp}] {message}\n"
+        self.log_edit.insertPlainText(log_message)
+        self.log_edit.moveCursor(self.log_edit.textCursor().End)
 
-        self.enrollment_timer = QTimer()
-        self.enrollment_timer.timeout.connect(self.update_enrollment_frame)
-        self.enrollment_timer.setInterval(30)
+    def update_stats(self):
+        """更新统计信息"""
+        self.stats_label.setText(
+            f"用户数: {self.total_users} | 识别次数: {self.total_recognitions} | 考勤次数: {self.total_attendance}")
 
-        self.attendance_timer = QTimer()
-        self.attendance_timer.timeout.connect(self.update_attendance)
-        self.attendance_timer.setInterval(1000)
-    
-    def update_camera_frame(self):
-        """更新摄像头帧"""
-        # 由于使用QCamera，帧更新由QCameraViewfinder自动处理
-        pass
-    
-    def update_enrollment_frame(self):
-        """更新录入摄像头帧"""
-        # 由于使用QCamera，帧更新由QCameraViewfinder自动处理
-        pass
-    
-    def init_api_service(self):
-        """初始化API服务"""
-        self.api_app = None
-        self.api_thread = None
-        self.api_running = False
-    
-    def start_api_service(self):
-        """启动API服务"""
-        try:
-            from flask import Flask, request, jsonify, render_template
-            
-            if self.api_running:
-                QMessageBox.warning(self, "警告", "API服务已在运行")
-                return
-            
-            self.api_app = Flask(__name__)
-            self.api_port = int(self.config['api_port'])
-            
-            # API路由
-            @self.api_app.route('/api/recognize', methods=['POST'])
-            def api_recognize():
-                try:
-                    data = request.json
-                    if 'image' not in data:
-                        return jsonify({'success': False, 'error': 'Missing image data'})
-                    
-                    # 这里应该实现图片解码和识别逻辑
-                    # 简化实现：返回模拟结果
-                    result = {
-                        'success': True,
-                        'name': 'unknown',
-                        'confidence': 0.0,
-                        'age': None,
-                        'gender': None,
-                        'emotion': None,
-                        'mask': None,
-                        'model_status': self.model_status
-                    }
-                    
-                    return jsonify(result)
-                    
-                except Exception as e:
-                    return jsonify({'success': False, 'error': str(e)})
-            
-            @self.api_app.route('/api/enroll', methods=['POST'])
-            def api_enroll():
-                try:
-                    data = request.json
-                    if 'name' not in data or 'image' not in data:
-                        return jsonify({'success': False, 'error': 'Missing required fields'})
-                    
-                    # 简化实现：返回成功消息
-                    return jsonify({
-                        'success': True,
-                        'message': f"Face enrolled successfully for {data['name']}"
-                    })
-                    
-                except Exception as e:
-                    return jsonify({'success': False, 'error': str(e)})
-            
-            @self.api_app.route('/api/status', methods=['GET'])
-            def api_status():
-                return jsonify({
-                    'success': True,
-                    'status': 'running',
-                    'model_status': self.model_status,
-                    'camera_running': self.is_camera_running,
-                    'recognition_running': self.is_recognizing,
-                    'total_faces': len(self.face_database),
-                    'total_recognitions': self.total_recognitions
-                })
-            
-            @self.api_app.route('/api/models/status', methods=['GET'])
-            def api_model_status():
-                return jsonify({
-                    'shape_predictor': self.predictor is not None,
-                    'face_recognizer': self.face_recognizer is not None,
-                    'model_status': self.model_status,
-                    'use_local_models_only': self.config['use_local_models_only']
-                })
-            
-            # 在新线程中启动API服务
-            def run_api():
-                self.api_app.run(host='0.0.0.0', port=self.api_port, debug=False, use_reloader=False)
-            
-            self.api_thread = threading.Thread(target=run_api, daemon=True)
-            self.api_thread.start()
-            self.api_running = True
-            
-            self.start_api_btn.setEnabled(False)
-            self.stop_api_btn.setEnabled(True)
-            self.update_log(f"API服务已启动，端口: {self.api_port}")
-            
-        except Exception as e:
-            self.update_log(f"启动API服务失败: {str(e)}")
-    
-    def stop_api_service(self):
-        """停止API服务"""
-        try:
-            if self.api_running:
-                self.api_running = False
-                # Flask不支持优雅关闭，这里只能标记为停止状态
-                self.start_api_btn.setEnabled(True)
-                self.stop_api_btn.setEnabled(False)
-                self.update_log("API服务已停止")
-                
-        except Exception as e:
-            self.update_log(f"停止API服务失败: {str(e)}")
-    
+    def create_log_area(self, parent_layout):
+        """创建日志区域"""
+        log_group = QGroupBox("系统日志")
+        log_layout = QVBoxLayout(log_group)
+        self.log_edit = QTextEdit()
+        self.log_edit.setReadOnly(True)
+        self.log_edit.setFixedHeight(120)
+        log_layout.addWidget(self.log_edit)
+        parent_layout.addWidget(log_group)
+
     def load_face_database(self):
         """加载人脸数据库"""
-        try:
-            # 从CSV文件加载特征
-            features_file = os.path.join(self.config['database_path'], self.config['features_file'])
-            if os.path.exists(features_file):
-                with open(features_file, 'r', encoding='utf-8') as f:
-                    reader = csv.DictReader(f)
-                    for row in reader:
-                        name = row['name']
-                        if name not in self.face_database:
-                            self.face_database[name] = {
-                                'features': [],
-                                'images': [],
-                                'info': {}
-                            }
-                        
-                        # 提取特征向量
-                        features = []
-                        for i in range(128):
-                            feature_key = f'feature_{i}'
-                            if feature_key in row:
-                                features.append(float(row[feature_key]))
-                        
-                        if features:
-                            self.face_database[name]['features'].append(features)
-            
-            self.update_log(f"人脸数据库加载完成，共 {len(self.face_database)} 个人脸")
-            
-        except Exception as e:
-            self.update_log(f"加载人脸数据库失败: {str(e)}")
-    
-    def save_face_database(self):
-        """保存人脸数据库"""
-        try:
-            features_file = os.path.join(self.config['database_path'], self.config['features_file'])
-            with open(features_file, 'w', encoding='utf-8', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(['name', 'timestamp'] + [f'feature_{i}' for i in range(128)])
-                
-                for name, data in self.face_database.items():
-                    for features in data['features']:
-                        row = [name, datetime.now().isoformat()]
-                        row.extend(features)
-                        writer.writerow(row)
-            
-            self.update_log("人脸数据库保存完成")
-            
-        except Exception as e:
-            self.update_log(f"保存人脸数据库失败: {str(e)}")
-    
+        self.database.load_face_database()
+
     def toggle_camera(self):
         """切换摄像头状态"""
-        if not self.is_camera_running:
-            self.start_camera()
-        else:
-            self.stop_camera()
-    
-    def start_camera(self):
-        """启动摄像头"""
-        try:
-            # 使用PyQt5的QCamera替代OpenCV
-            from PyQt5.QtMultimedia import QCamera, QCameraInfo
-            from PyQt5.QtMultimediaWidgets import QCameraViewfinder
-            
-            # 获取可用摄像头
-            cameras = QCameraInfo.availableCameras()
-            if not cameras:
-                QMessageBox.warning(self, "警告", "未找到可用摄像头")
-                return
-            
-            # 创建摄像头对象
-            self.camera = QCamera(cameras[self.current_camera_index])
-            
-            # 创建取景器
-            self.viewfinder = QCameraViewfinder()
-            self.viewfinder.setFixedSize(640, 480)
-            
-            # 清空视频标签布局
-            layout = self.video_label.layout()
-            if layout:
-                for i in reversed(range(layout.count())):
-                    widget = layout.itemAt(i).widget()
-                    if widget:
-                        widget.deleteLater()
-            
-            # 添加取景器到视频标签
-            layout.addWidget(self.viewfinder)
-            self.camera.setViewfinder(self.viewfinder)
-            
-            # 启动摄像头
-            self.camera.start()
-            self.is_camera_running = True
-            
-            # 更新界面
-            self.camera_btn.setText("停止摄像头")
-            self.camera_status_label.setText("摄像头: 开启")
-            self.camera_status_label.setStyleSheet("color: green;")
-            
-            self.update_log("摄像头启动成功")
-            
-        except Exception as e:
-            self.update_log(f"摄像头启动失败: {str(e)}")
-            QMessageBox.critical(self, "错误", f"摄像头启动失败: {str(e)}")
-    
+        self.camera.toggle_camera()
+
     def stop_camera(self):
         """停止摄像头"""
-        try:
-            if self.camera:
-                self.camera.stop()
-                self.camera.deleteLater()
-                self.camera = None
-            
-            self.is_camera_running = False
-            
-            # 恢复默认显示
-            layout = self.video_label.layout()
-            if layout:
-                for i in reversed(range(layout.count())):
-                    widget = layout.itemAt(i).widget()
-                    if widget:
-                        widget.deleteLater()
-            
-            default_text = QLabel("摄像头未启动")
-            default_text.setStyleSheet("color: #aaa; font-size: 16px;")
-            default_text.setAlignment(Qt.AlignCenter)
-            layout.addWidget(default_text)
-            layout.setAlignment(Qt.AlignCenter)
-            
-            # 更新界面
-            self.camera_btn.setText("启动摄像头")
-            self.camera_status_label.setText("摄像头: 关闭")
-            self.camera_status_label.setStyleSheet("color: red;")
-            
-            self.update_log("摄像头停止成功")
-            
-        except Exception as e:
-            self.update_log(f"摄像头停止失败: {str(e)}")
-    
+        self.camera.stop_camera()
+
     def select_image(self):
         """选择图片文件"""
-        try:
-            file_path, _ = QFileDialog.getOpenFileName(
-                self, "选择图片文件", "", 
-                "Image Files (*.png *.jpg *.jpeg *.bmp *.gif);;All Files (*)"
-            )
-            
-            if file_path:
-                # 读取图片
-                image = Image.open(file_path)
-                
-                # 显示图片
-                self.display_image_from_pil(image)
-                
-                # 进行人脸识别（不需要摄像头）
-                result = self.recognize_face_from_image(image)
-                
-                # 显示识别结果
-                if result['success']:
-                    self.result_label.setText(f"识别结果: {result['name']}")
-                    self.confidence_label.setText(f"置信度: {result['confidence']:.3f}" if result['confidence'] is not None else "置信度: -")
-                    self.age_gender_label.setText(f"年龄/性别: {result['age']}岁/{result['gender']}" if result['age'] and result['gender'] else "年龄/性别: -")
-                    self.emotion_label.setText(f"情绪: {result['emotion']}" if result['emotion'] else "情绪: -")
-                    self.mask_label.setText(f"口罩: {result['mask']}" if result['mask'] else "口罩: -")
-                else:
-                    self.result_label.setText(f"识别失败: {result.get('error', '未知错误')}")
-                    self.confidence_label.setText("置信度: -")
-                    self.age_gender_label.setText("年龄/性别: -")
-                    self.emotion_label.setText("情绪: -")
-                    self.mask_label.setText("口罩: -")
-                
-                self.update_log(f"加载图片: {os.path.basename(file_path)}")
-                
-        except Exception as e:
-            self.update_log(f"加载图片失败: {str(e)}")
-            QMessageBox.critical(self, "错误", f"加载图片失败: {str(e)}")
-    
+        self.utils.select_image()
+
     def select_video(self):
         """选择视频文件"""
-        try:
-            file_path, _ = QFileDialog.getOpenFileName(
-                self, "选择视频文件", "", 
-                "Video Files (*.mp4 *.avi *.mov *.mkv);;All Files (*)"
-            )
-            
-            if file_path:
-                self.update_log(f"选择视频: {os.path.basename(file_path)}")
-                QMessageBox.information(self, "提示", "视频播放功能开发中...")
-                
-        except Exception as e:
-            self.update_log(f"加载视频失败: {str(e)}")
-            QMessageBox.critical(self, "错误", f"加载视频失败: {str(e)}")
-    
+        self.utils.select_video()
+
     def display_image_from_pil(self, pil_image):
         """从PIL图像显示"""
-        try:
-            # 转换为RGB格式
-            if pil_image.mode != 'RGB':
-                pil_image = pil_image.convert('RGB')
-            
-            # 获取图像数据
-            width, height = pil_image.size
-            data = pil_image.tobytes()
-            
-            # 创建QImage
-            qimage = QImage(data, width, height, QImage.Format_RGB888)
-            
-            # 显示图像
-            self.display_image(qimage)
-            
-        except Exception as e:
-            self.update_log(f"图像显示失败: {str(e)}")
-    
+        self.utils.display_image_from_pil(pil_image)
+
     def display_image(self, qimage):
         """显示图像"""
-        try:
-            # 清空视频标签布局
-            layout = self.video_label.layout()
-            if layout:
-                for i in reversed(range(layout.count())):
-                    widget = layout.itemAt(i).widget()
-                    if widget:
-                        widget.deleteLater()
-            
-            # 创建标签显示图像
-            image_label = QLabel()
-            pixmap = QPixmap.fromImage(qimage)
-            pixmap = pixmap.scaled(640, 480, Qt.KeepAspectRatio)
-            image_label.setPixmap(pixmap)
-            image_label.setAlignment(Qt.AlignCenter)
-            
-            layout.addWidget(image_label)
-            layout.setAlignment(Qt.AlignCenter)
-            
-        except Exception as e:
-            self.update_log(f"图像显示失败: {str(e)}")
-    
+        self.utils.display_image(qimage)
+
     def start_recognition(self):
         """开始人脸识别"""
-        try:
-            # 检查模型状态
-            if self.model_status != "完整":
-                error_messages = {
-                    "未检查": "模型尚未完成初始化检查，请稍候重试",
-                    "不完整": "模型文件缺失或损坏，请检查模型配置",
-                    "部分完整": "部分模型文件缺失，只能使用基本检测功能",
-                    "错误": "模型初始化过程中发生错误，请查看日志"
-                }
-                
-                message = error_messages.get(self.model_status, f"模型状态异常: {self.model_status}")
-                QMessageBox.warning(self, "警告", f"人脸识别功能受限\n\n{message}\n\n建议检查：\n1. 模型文件是否存在\n2. 模型文件大小是否正常\n3. 模型路径配置是否正确\n4. 查看系统日志获取详细信息")
-                
-                # 如果有特征点预测器，仍然可以启动基础检测
-                if self.predictor:
-                    reply = QMessageBox.question(self, "确认", "是否启动基础人脸检测功能？", 
-                                                QMessageBox.Yes | QMessageBox.No)
-                    if reply != QMessageBox.Yes:
-                        return
-            
-            if not self.is_camera_running:
-                QMessageBox.warning(self, "警告", "请先启动摄像头")
-                return
-            
-            self.is_recognizing = True
-            
-            # 更新界面
-            self.start_recognition_btn.setEnabled(False)
-            self.stop_recognition_btn.setEnabled(True)
-            
-            self.update_status("识别中")
-            self.update_log("开始人脸识别")
-            
-            # 启动识别定时器
-            self.recognition_timer.start()
-            
-        except Exception as e:
-            self.update_log(f"启动识别失败: {str(e)}")
-    
+        self.models.start_recognition()
+        # 修复问题3：开始识别时启动信息更新定时器
+        if not self.info_update_timer.isActive():
+            self.info_update_timer.start()
+            self.update_log("信息数据更新定时器已启动（每10秒更新一次）")
+
     def stop_recognition(self):
         """停止人脸识别"""
+        self.models.stop_recognition()
+        # 修复问题3：停止识别时停止信息更新定时器
+        if self.info_update_timer.isActive():
+            self.info_update_timer.stop()
+            self.update_log("信息数据更新定时器已停止")
+
+    def pause_recognition(self):
+        """暂停人脸识别并固定当前结果"""
         try:
-            self.is_recognizing = False
-            
-            # 停止定时器
-            self.recognition_timer.stop()
-            
-            # 更新界面
-            self.start_recognition_btn.setEnabled(True)
-            self.stop_recognition_btn.setEnabled(False)
-            
-            self.update_status("就绪")
-            self.result_label.setText("等待识别...")
-            self.confidence_label.setText("置信度: -")
-            self.age_gender_label.setText("年龄/性别: -")
-            self.emotion_label.setText("情绪: -")
-            self.mask_label.setText("口罩: -")
-            
-            self.update_log("停止人脸识别")
-            
-        except Exception as e:
-            self.update_log(f"停止识别失败: {str(e)}")
-    
-    def perform_recognition(self):
-        """执行人脸识别"""
-        if not self.is_recognizing:
-            return
-        
-        try:
-            # 检查模型状态
-            if not self.predictor:
-                self.result_label.setText("无法识别：缺少特征点预测器")
-                self.confidence_label.setText("置信度: -")
-                self.age_gender_label.setText("年龄/性别: -")
-                self.emotion_label.setText("情绪: -")
-                self.mask_label.setText("口罩: -")
-                return
-            
-            # 如果没有摄像头，不进行实时识别
-            if not self.is_camera_running:
-                return
-            
-            # 简化实现：模拟识别过程
-            import random
-            
-            # 模拟检测到人脸
-            if random.random() > 0.3:  # 70%概率检测到人脸
-                if self.face_recognizer and self.face_database:
-                    # 随机选择一个人脸进行匹配
-                    names = list(self.face_database.keys())
-                    matched_name = random.choice(names)
-                    confidence = random.uniform(0.1, 0.3)
-                    
-                    # 更新识别结果
-                    self.result_label.setText(f"识别结果: {matched_name}")
-                    self.confidence_label.setText(f"置信度: {confidence:.3f}")
-                    
-                    # 模拟年龄性别预测
-                    age = random.randint(18, 60)
-                    gender = random.choice(['男', '女'])
-                    self.age_gender_label.setText(f"年龄/性别: {age}岁/{gender}")
-                    
-                    # 模拟情绪识别
-                    emotions = ['开心', '中性', '惊讶', '生气', '悲伤']
-                    emotion = random.choice(emotions)
-                    self.emotion_label.setText(f"情绪: {emotion}")
-                    
-                    # 模拟口罩检测
-                    mask = random.choice(['未佩戴', '佩戴'])
-                    self.mask_label.setText(f"口罩: {mask}")
-                    
-                    # 记录识别历史
-                    self.add_recognition_history(matched_name, confidence, 'success', 'camera')
-                    
-                    # 记录日志
-                    self.log_recognition(matched_name, confidence, 'success')
-                    
-                    self.total_recognitions += 1
-                    self.update_stats()
-                    
-                else:
-                    if not self.face_recognizer:
-                        self.result_label.setText("检测到人脸（基础模式）")
-                    elif not self.face_database:
-                        self.result_label.setText("检测到人脸（数据库为空）")
-                    else:
-                        self.result_label.setText("识别结果: 未知人脸")
-                    self.confidence_label.setText("置信度: -")
-                    self.age_gender_label.setText("年龄/性别: -")
-                    self.emotion_label.setText("情绪: -")
-                    self.mask_label.setText("口罩: -")
-                    
+            if not hasattr(self, 'is_recognition_paused'):
+                self.is_recognition_paused = False
+
+            if self.is_recognition_paused:
+                # 恢复识别
+                self.is_recognition_paused = False
+                self.recognition_timer.start()
+                self.pause_recognition_btn.setText("暂停识别")
+                self.update_status("识别中")
+                self.update_log("恢复人脸识别")
             else:
-                self.result_label.setText("等待识别...")
-                self.confidence_label.setText("置信度: -")
-                self.age_gender_label.setText("年龄/性别: -")
-                self.emotion_label.setText("情绪: -")
-                self.mask_label.setText("口罩: -")
-                
+                # 暂停识别并固定当前结果
+                self.is_recognition_paused = True
+                self.recognition_timer.stop()
+
+                # 固定当前识别结果
+                if self.fixed_recognition:
+                    for face_id, result in list(self.fixed_recognition.items()):
+                        # 更新固定时间戳
+                        result['fixed_at'] = datetime.now()
+                        result['paused'] = True
+                    self.update_log(f"已暂停识别并固定当前结果")
+                elif self.stable_recognition:
+                    # 如果没有固定结果但有稳定结果，自动固定稳定结果
+                    for face_id, result in list(self.stable_recognition.items()):
+                        self.fixed_recognition[face_id] = {
+                            'name': result['name'],
+                            'confidence': result['confidence'],
+                            'fixed_at': datetime.now(),
+                            'paused': True
+                        }
+                    self.update_log(f"已暂停识别并自动固定稳定结果")
+                else:
+                    self.update_log(f"已暂停识别，但没有可固定的结果")
+
+                self.pause_recognition_btn.setText("恢复识别")
+                self.update_status("识别已暂停")
         except Exception as e:
-            self.update_log(f"识别过程出错: {str(e)}")
-            self.result_label.setText("识别出错")
-            self.confidence_label.setText("置信度: -")
-            self.age_gender_label.setText("年龄/性别: -")
-            self.emotion_label.setText("情绪: -")
-            self.mask_label.setText("口罩: -")
-    
+            self.update_log(f"暂停识别失败: {str(e)}")
+
+    def clear_fixed_results(self):
+        """清除固定的识别结果"""
+        try:
+            if self.fixed_recognition:
+                fixed_names = [result['name'] for result in self.fixed_recognition.values() if 'name' in result]
+                self.fixed_recognition.clear()
+                self.update_log(f"已清除固定结果: {', '.join(fixed_names)}")
+                # 如果识别正在进行，重新启动识别
+                if self.is_recognizing and not self.is_recognition_paused:
+                    self.recognition_timer.start()
+                # 更新界面
+                self.fixed_label.setText("状态: 实时")
+                self.fixed_label.setStyleSheet("font-size: 14px; color: blue;")
+            else:
+                self.update_log("没有固定结果可清除")
+        except Exception as e:
+            self.update_log(f"清除固定结果失败: {str(e)}")
+
     def recognize_face_from_image(self, image):
         """从图像识别人脸"""
-        try:
-            # 检查模型状态
-            if self.model_status != "完整":
-                return {'success': False, 'error': f'Model status is {self.model_status}'}
-            
-            if not self.detector or not self.predictor or not self.face_recognizer:
-                return {'success': False, 'error': 'Model components missing'}
-            
-            # 转换为RGB格式
-            if image.mode != 'RGB':
-                image = image.convert('RGB')
-            
-            # 转换为numpy数组
-            image_np = np.array(image)
-            
-            # 检测人脸
-            faces = self.detector(image_np)
-            if not faces:
-                return {'success': False, 'error': 'No face detected'}
-            
-            # 取第一张人脸
-            face = faces[0]
-            
-            # 获取特征点
-            shape = self.predictor(image_np, face)
-            
-            # 计算人脸特征
-            face_descriptor = self.face_recognizer.compute_face_descriptor(image_np, shape)
-            face_features = np.array(face_descriptor)
-            
-            # 与数据库中的人脸进行比较
-            best_match_name = "unknown"
-            best_match_distance = float('inf')
-            
-            if self.face_database:
-                for name, data in self.face_database.items():
-                    for features in data['features']:
-                        distance = np.linalg.norm(np.array(features) - face_features)
-                        if distance < best_match_distance:
-                            best_match_distance = distance
-                            best_match_name = name
-            
-            # 检查是否匹配成功
-            confidence = None
-            if best_match_name != "unknown" and best_match_distance < self.config['threshold']:
-                confidence = 1.0 - best_match_distance
-            
-            # 模拟年龄性别预测（简化实现）
-            import random
-            age = random.randint(18, 60)
-            gender = random.choice(['male', 'female'])
-            emotion = random.choice(['happy', 'neutral', 'surprised', 'angry', 'sad'])
-            mask = random.choice(['no', 'yes'])
-            
-            return {
-                'success': True,
-                'name': best_match_name if confidence else 'unknown',
-                'confidence': confidence,
-                'age': age,
-                'gender': gender,
-                'emotion': emotion,
-                'mask': mask
-            }
-            
-        except Exception as e:
-            return {'success': False, 'error': str(e)}
-    
+        return self.models.recognize_face_from_image(image)
+
     def toggle_enroll_camera(self):
         """切换录入摄像头"""
-        if not self.is_camera_running:
-            self.start_enroll_camera()
-        else:
-            self.stop_enroll_camera()
-    
+        self.camera.toggle_enroll_camera()
+
     def start_enroll_camera(self):
         """启动录入摄像头"""
-        try:
-            self.start_camera()
-            
-            # 更新录入界面
-            self.enroll_camera_btn.setText("停止摄像头")
-            self.capture_btn.setEnabled(True)
-            self.enrollment_status.setText("摄像头已启动，请面对摄像头")
-            
-            self.update_log("录入摄像头启动成功")
-            
-        except Exception as e:
-            self.update_log(f"录入摄像头启动失败: {str(e)}")
-    
+        self.camera.start_enroll_camera()
+
     def stop_enroll_camera(self):
         """停止录入摄像头"""
-        try:
-            self.stop_camera()
-            
-            # 更新录入界面
-            self.enroll_camera_btn.setText("启动摄像头录入")
-            self.capture_btn.setEnabled(False)
-            self.enrollment_status.setText("摄像头已停止")
-            
-            self.update_log("录入摄像头停止成功")
-            
-        except Exception as e:
-            self.update_log(f"录入摄像头停止失败: {str(e)}")
-    
+        self.camera.stop_enroll_camera()
+
     def select_enroll_image(self):
-        """选择录入图片"""
-        try:
-            file_path, _ = QFileDialog.getOpenFileName(
-                self, "选择录入图片", "", 
-                "Image Files (*.png *.jpg *.jpeg *.bmp *.gif);;All Files (*)"
-            )
-            
-            if file_path:
-                # 读取图片
-                image = Image.open(file_path)
-                
-                # 显示图片
-                self.display_enroll_image(image)
-                
-                # 检测人脸
-                self.detect_face_for_enrollment(image)
-                
-                self.update_log(f"加载录入图片: {os.path.basename(file_path)}")
-                
-        except Exception as e:
-            self.update_log(f"加载录入图片失败: {str(e)}")
-    
+        """选择录入图片 - 修复需求1：确保照片能正确添加和保存"""
+        self.utils.select_enroll_image()
+
     def display_enroll_image(self, pil_image):
         """显示录入图像"""
-        try:
-            # 转换为RGB格式
-            if pil_image.mode != 'RGB':
-                pil_image = pil_image.convert('RGB')
-            
-            # 调整大小
-            pil_image = pil_image.resize((320, 240), Image.Resampling.LANCZOS)
-            
-            # 获取图像数据
-            width, height = pil_image.size
-            data = pil_image.tobytes()
-            
-            # 创建QImage
-            qimage = QImage(data, width, height, QImage.Format_RGB888)
-            
-            # 清空预览布局
-            layout = self.enroll_preview.layout()
-            if layout:
-                for i in reversed(range(layout.count())):
-                    widget = layout.itemAt(i).widget()
-                    if widget:
-                        widget.deleteLater()
-            
-            # 显示图像
-            image_label = QLabel()
-            pixmap = QPixmap.fromImage(qimage)
-            image_label.setPixmap(pixmap)
-            image_label.setAlignment(Qt.AlignCenter)
-            
-            layout.addWidget(image_label)
-            layout.setAlignment(Qt.AlignCenter)
-            
-        except Exception as e:
-            self.update_log(f"录入图像显示失败: {str(e)}")
-    
+        self.utils.display_enroll_image(pil_image)
+
     def detect_face_for_enrollment(self, image):
         """检测录入人脸"""
-        try:
-            if not self.predictor:
-                self.enrollment_status.setText("错误：特征点预测器未加载，无法检测人脸")
-                return False
-            
-            # 简化实现：假设检测到人脸
-            self.enrollment_status.setText("检测到人脸，可以进行录入")
-            return True
-            
-        except Exception as e:
-            self.update_log(f"人脸检测失败: {str(e)}")
-            self.enrollment_status.setText(f"人脸检测失败: {str(e)}")
-            return False
-    
+        return self.models.detect_face_for_enrollment(image)
+
     def capture_face(self):
         """捕获人脸"""
-        try:
-            if not self.is_camera_running:
-                QMessageBox.warning(self, "警告", "请先启动摄像头")
-                return
-            
-            # 简化实现：模拟捕获人脸
-            self.enrollment_status.setText("人脸捕获成功，准备保存信息")
-            QMessageBox.information(self, "提示", "人脸捕获成功！请填写人员信息并点击保存")
-            
-        except Exception as e:
-            self.update_log(f"人脸捕获失败: {str(e)}")
-            self.enrollment_status.setText(f"人脸捕获失败: {str(e)}")
-    
+        self.utils.capture_face()
+
+    def add_photo_to_list(self, photo_path):
+        """添加照片到列表显示 - 修复需求1的关键"""
+        self.utils.add_photo_to_list(photo_path)
+
+    def on_photo_selection_changed(self):
+        """照片选择变化处理"""
+        self.utils.on_photo_selection_changed()
+
+    def delete_selected_photo(self):
+        """删除选中的照片"""
+        self.utils.delete_selected_photo()
+
+    def batch_enroll_images(self):
+        """批量导入照片"""
+        self.utils.batch_enroll_images()
+
     def save_enrollment(self):
         """保存录入信息"""
-        try:
-            # 获取录入信息
-            name = self.enroll_name.text().strip()
-            age = self.enroll_age.text().strip()
-            gender = self.enroll_gender.text().strip()
-            department = self.enroll_department.text().strip()
-            
-            if not name:
-                QMessageBox.warning(self, "警告", "请输入姓名")
-                return
-            
-            # 检查是否已存在
-            if name in self.face_database:
-                reply = QMessageBox.question(self, "确认", f"姓名 {name} 已存在，是否更新？", 
-                                            QMessageBox.Yes | QMessageBox.No)
-                if reply != QMessageBox.Yes:
-                    return
-            
-            # 简化实现：添加到数据库
-            if name not in self.face_database:
-                self.face_database[name] = {
-                    'features': [],
-                    'images': [],
-                    'info': {}
-                }
-            
-            self.face_database[name]['info'] = {
-                'age': age,
-                'gender': gender,
-                'department': department,
-                'created_at': datetime.now().isoformat()
-            }
-            
-            # 保存到文件
-            self.save_face_database()
-            
-            # 更新数据表格
-            self.refresh_data()
-            
-            # 清空表单
-            self.enroll_name.clear()
-            self.enroll_age.clear()
-            self.enroll_gender.clear()
-            self.enroll_department.clear()
-            
-            self.enrollment_status.setText(f"录入成功：{name}")
-            self.update_log(f"人脸录入成功：{name}")
-            QMessageBox.information(self, "成功", f"人脸录入成功：{name}")
-            
-        except Exception as e:
-            self.update_log(f"保存录入信息失败: {str(e)}")
-            QMessageBox.critical(self, "错误", f"保存录入信息失败: {str(e)}")
-    
+        self.database.save_enrollment()
+
+    def auto_save_enrollment(self):
+        """自动保存录入信息 - 修复需求2"""
+        self.database.auto_save_enrollment()
+
+    def save_to_database(self, name, age, gender, department, photo_paths):
+        """保存到数据库"""
+        self.database.save_to_database(name, age, gender, department, photo_paths)
+
+    def perform_recognition(self):
+        """执行人脸识别"""
+        self.models.perform_recognition()
+
+    def start_attendance_camera(self):
+        """启动考勤摄像头"""
+        self.camera.start_attendance_camera()
+
+    def stop_attendance_camera(self):
+        """停止考勤摄像头"""
+        self.camera.stop_attendance_camera()
+
+    def on_data_table_selection_changed(self):
+        """数据表格选择变化处理"""
+        self.utils.on_data_table_selection_changed()
+
+    def view_user_photos(self):
+        """查看用户照片"""
+        self.utils.view_user_photos()
+
+    def edit_user_info(self):
+        """编辑用户信息"""
+        self.utils.edit_user_info()
+
+    def import_data(self):
+        """导入数据"""
+        self.database.import_data()
+
     def refresh_data(self):
         """刷新数据表格"""
-        try:
-            self.data_table.setRowCount(0)
-            
-            for name, data in self.face_database.items():
-                row_position = self.data_table.rowCount()
-                self.data_table.insertRow(row_position)
-                
-                # 填充数据
-                self.data_table.setItem(row_position, 0, QTableWidgetItem(name))
-                self.data_table.setItem(row_position, 1, QTableWidgetItem(data['info'].get('age', '')))
-                self.data_table.setItem(row_position, 2, QTableWidgetItem(data['info'].get('gender', '')))
-                self.data_table.setItem(row_position, 3, QTableWidgetItem(data['info'].get('department', '')))
-                self.data_table.setItem(row_position, 4, QTableWidgetItem(data['info'].get('created_at', '')))
-                
-                # 删除按钮
-                delete_btn = QPushButton("删除")
-                delete_btn.clicked.connect(lambda _, n=name: self.delete_face(n))
-                self.data_table.setCellWidget(row_position, 5, delete_btn)
-                
-        except Exception as e:
-            self.update_log(f"刷新数据失败: {str(e)}")
-    
+        self.database.refresh_data()
+
     def delete_selected(self):
         """删除选中行"""
         try:
             selected_rows = self.data_table.selectionModel().selectedRows()
             if not selected_rows:
-                QMessageBox.warning(self, "警告", "请选择要删除的行")
+                QMessageBox.warning(self, "警告", "请选择要删除的用户")
                 return
-            
-            reply = QMessageBox.question(self, "确认", f"确定要删除选中的 {len(selected_rows)} 条记录吗？", 
-                                        QMessageBox.Yes | QMessageBox.No)
-            if reply != QMessageBox.Yes:
+
+            reply = QMessageBox.question(self, "确认", "确定要删除选中的用户吗？",
+                                         QMessageBox.Yes | QMessageBox.No)
+            if reply == QMessageBox.No:
                 return
-            
-            for row in reversed(selected_rows):
+
+            deleted_count = 0
+            for row in selected_rows:
                 name = self.data_table.item(row.row(), 0).text()
-                if name in self.face_database:
-                    del self.face_database[name]
-                self.data_table.removeRow(row.row())
-            
-            # 保存更改
-            self.save_face_database()
-            self.update_log(f"删除选中的 {len(selected_rows)} 条记录")
-            
+                if self.database.delete_face(name):
+                    deleted_count += 1
+
+            self.refresh_data()
+            QMessageBox.information(self, "成功", f"成功删除 {deleted_count} 个用户")
         except Exception as e:
-            self.update_log(f"删除选中记录失败: {str(e)}")
-    
+            self.update_log(f"删除用户失败: {str(e)}")
+            QMessageBox.critical(self, "错误", f"删除用户失败: {str(e)}")
+
     def delete_face(self, name):
         """删除指定人脸"""
-        try:
-            if name in self.face_database:
-                reply = QMessageBox.question(self, "确认", f"确定要删除 {name} 吗？", 
-                                            QMessageBox.Yes | QMessageBox.No)
-                if reply == QMessageBox.Yes:
-                    del self.face_database[name]
-                    self.save_face_database()
-                    self.refresh_data()
-                    self.update_log(f"删除人脸: {name}")
-            
-        except Exception as e:
-            self.update_log(f"删除人脸失败: {str(e)}")
-    
+        self.database.delete_face(name)
+
     def export_data(self):
         """导出数据"""
-        try:
-            file_path, _ = QFileDialog.getSaveFileName(
-                self, "导出数据", "", 
-                "JSON Files (*.json);;CSV Files (*.csv);;All Files (*)"
-            )
-            
-            if file_path:
-                if file_path.endswith('.json'):
-                    with open(file_path, 'w', encoding='utf-8') as f:
-                        json.dump(self.face_database, f, indent=4, ensure_ascii=False)
-                elif file_path.endswith('.csv'):
-                    self.save_face_database()  # CSV格式已在save_face_database中处理
-                    # 如果需要，可以复制文件到指定路径
-                    import shutil
-                    shutil.copy2(
-                        os.path.join(self.config['database_path'], self.config['features_file']),
-                        file_path
-                    )
-                else:
-                    QMessageBox.warning(self, "警告", "不支持的文件格式")
-                    return
-                
-                self.update_log(f"数据导出成功: {file_path}")
-                QMessageBox.information(self, "成功", f"数据导出成功: {file_path}")
-                
-        except Exception as e:
-            self.update_log(f"数据导出失败: {str(e)}")
-            QMessageBox.critical(self, "错误", f"数据导出失败: {str(e)}")
-    
+        self.database.export_data()
+
     def start_attendance(self):
         """开始考勤"""
         try:
-            if self.is_attendance_running:
-                QMessageBox.warning(self, "警告", "考勤已在运行")
-                return
-            
-            # 检查模型状态
-            if self.model_status != "完整":
-                QMessageBox.warning(self, "警告", f"模型状态不完整 ({self.model_status})，考勤功能可能受限")
-            
-            if not self.is_camera_running:
-                QMessageBox.warning(self, "警告", "请先启动摄像头")
-                return
-            
             self.is_attendance_running = True
-            
-            # 更新界面
             self.start_attendance_btn.setEnabled(False)
             self.stop_attendance_btn.setEnabled(True)
-            
+
+            # 启用考勤操作按钮
+            self.check_in_btn.setEnabled(True)
+            self.check_out_btn.setEnabled(True)
+            self.auto_check_btn.setEnabled(True)
+
             self.update_status("考勤中")
-            self.update_log("开始考勤")
-            
-            # 启动考勤定时器
-            self.attendance_timer.start()
-            
+            self.attendance_status_label.setText("考勤状态: 运行中")
+            self.attendance_status_label.setStyleSheet("color: green;")
+            self.update_log("开始考勤监控")
+
+            # 启动考勤摄像头
+            self.start_attendance_camera()
+
+            # 刷新考勤记录
+            self.refresh_attendance_records()
+
         except Exception as e:
             self.update_log(f"启动考勤失败: {str(e)}")
-    
+
     def stop_attendance(self):
         """停止考勤"""
         try:
             self.is_attendance_running = False
-            
-            # 停止定时器
-            self.attendance_timer.stop()
-            
-            # 更新界面
             self.start_attendance_btn.setEnabled(True)
             self.stop_attendance_btn.setEnabled(False)
-            
+
+            # 禁用考勤操作按钮
+            self.check_in_btn.setEnabled(False)
+            self.check_out_btn.setEnabled(False)
+            self.auto_check_btn.setEnabled(False)
+
             self.update_status("就绪")
-            self.update_log("停止考勤")
-            
+            self.attendance_status_label.setText("考勤状态: 已停止")
+            self.attendance_status_label.setStyleSheet("color: red;")
+            self.update_log("停止考勤监控")
+
+            # 停止考勤摄像头
+            self.stop_attendance_camera()
+
         except Exception as e:
             self.update_log(f"停止考勤失败: {str(e)}")
-    
+
     def update_attendance(self):
-        """更新考勤"""
-        if not self.is_attendance_running or not self.is_camera_running:
+        """更新考勤信息"""
+        if not self.is_attendance_running:
             return
-        
         try:
             # 简化实现：模拟考勤检测
-            import random
-            
-            if self.face_database and random.random() > 0.7:  # 30%概率检测到人脸
-                names = list(self.face_database.keys())
-                name = random.choice(names)
-                current_time = datetime.now().isoformat()
-                
-                # 检查是否已签到
-                if name not in self.attendance_records:
-                    self.attendance_records[name] = {
-                        'check_in': current_time,
-                        'check_out': None,
-                        'status': '正常',
-                        'location': '办公室'
-                    }
-                    
-                    self.total_attendance += 1
-                    self.update_stats()
-                    self.update_log(f"考勤签到: {name}")
-                    
-                    # 更新考勤表格
-                    self.update_attendance_table()
-            
+            pass
         except Exception as e:
-            self.update_log(f"考勤更新失败: {str(e)}")
-    
-    def update_attendance_table(self):
-        """更新考勤表格"""
-        try:
-            self.attendance_table.setRowCount(0)
-            
-            for name, record in self.attendance_records.items():
-                row_position = self.attendance_table.rowCount()
-                self.attendance_table.insertRow(row_position)
-                
-                self.attendance_table.setItem(row_position, 0, QTableWidgetItem(name))
-                self.attendance_table.setItem(row_position, 1, QTableWidgetItem(record['check_in']))
-                self.attendance_table.setItem(row_position, 2, QTableWidgetItem(record['check_out'] or ''))
-                self.attendance_table.setItem(row_position, 3, QTableWidgetItem(record['status']))
-                self.attendance_table.setItem(row_position, 4, QTableWidgetItem(record['location']))
-                
-        except Exception as e:
-            self.update_log(f"更新考勤表格失败: {str(e)}")
-    
-    def generate_attendance_report(self):
-        """生成考勤报表"""
-        try:
-            # 简化实现：生成基本统计
-            total_records = len(self.attendance_records)
-            on_time = sum(1 for record in self.attendance_records.values() if record['status'] == '正常')
-            
-            report = f"""
-考勤报表
-==========
-统计时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-总签到人数: {total_records}
-正常签到: {on_time}
-迟到人数: {total_records - on_time}
-出勤率: {on_time/total_records*100:.1f}%
+            self.update_log(f"更新考勤失败: {str(e)}")
 
-签到明细:
-"""
-            
-            for name, record in self.attendance_records.items():
-                report += f"- {name}: {record['check_in']} ({record['status']})\n"
-            
-            # 显示报表
-            QMessageBox.information(self, "考勤报表", report)
-            
-            # 保存报表到文件
-            report_file = f"attendance_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-            with open(report_file, 'w', encoding='utf-8') as f:
-                f.write(report)
-            
-            self.update_log(f"考勤报表生成成功: {report_file}")
-            
-        except Exception as e:
-            self.update_log(f"生成考勤报表失败: {str(e)}")
-            QMessageBox.critical(self, "错误", f"生成考勤报表失败: {str(e)}")
-    
-    def save_settings(self):
-        """保存设置"""
-        try:
-            # 更新配置
-            self.config['shape_predictor_path'] = self.shape_predictor_edit.text().strip()
-            self.config['face_recognition_model_path'] = self.face_recognizer_edit.text().strip()
-            self.config['use_local_models_only'] = self.use_local_checkbox.isChecked()
-            
-            try:
-                self.config['threshold'] = float(self.threshold_edit.text().strip())
-                self.config['api_port'] = int(self.api_port_edit.text().strip())
-                self.config['camera_index'] = int(self.camera_index_edit.text().strip())
-            except ValueError:
-                QMessageBox.warning(self, "警告", "请输入有效的数值")
-                return
-            
-            # 保存配置文件
-            self.save_config()
-            
-            # 重新初始化模型
-            self.init_models()
-            
-            # 更新状态显示
-            self.model_status_label.setText(f"模型状态: {self.model_status}")
-            if self.model_status == "完整":
-                self.model_status_label.setStyleSheet("color: green;")
-            elif self.model_status == "部分完整":
-                self.model_status_label.setStyleSheet("color: orange;")
-            else:
-                self.model_status_label.setStyleSheet("color: red;")
-            
-            self.update_log("系统设置保存成功")
-            QMessageBox.information(self, "成功", "系统设置保存成功")
-            
-        except Exception as e:
-            self.update_log(f"保存设置失败: {str(e)}")
-            QMessageBox.critical(self, "错误", f"保存设置失败: {str(e)}")
-    
-    def add_recognition_history(self, name, confidence, status, method):
-        """添加识别历史"""
-        history_item = {
-            'timestamp': datetime.now().isoformat(),
-            'name': name,
-            'confidence': confidence,
-            'status': status,
-            'method': method
-        }
-        self.recognition_history.append(history_item)
-        
-        # 保持历史记录不超过100条
-        if len(self.recognition_history) > 100:
-            self.recognition_history.pop(0)
-    
-    def log_recognition(self, name, confidence, status):
-        """记录识别日志"""
-        try:
-            log_entry = [
-                datetime.now().isoformat(),
-                name,
-                f"{confidence:.3f}",
-                status,
-                'camera'
-            ]
-            
-            log_file = os.path.join('logs', self.config['log_file'])
-            with open(log_file, 'a', encoding='utf-8', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(log_entry)
-                
-        except Exception as e:
-            self.update_log(f"记录日志失败: {str(e)}")
-    
-    def update_log(self, message):
-        """更新日志"""
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        log_message = f"[{timestamp}] {message}\n"
-        
-        self.log_text.append(log_message)
-        self.log_text.ensureCursorVisible()
-        
-        # 保存到文件
-        try:
-            with open('system.log', 'a', encoding='utf-8') as f:
-                f.write(log_message)
-        except Exception as e:
-            print(f"保存日志到文件失败: {str(e)}")
-    
-    def update_status(self, status):
-        """更新状态"""
-        self.status_label.setText(f"状态: {status}")
-    
-    def update_stats(self):
-        """更新统计信息"""
-        self.stats_label.setText(f"识别次数: {self.total_recognitions} | 考勤次数: {self.total_attendance}")
-    
     def on_tab_changed(self, index):
         """标签页切换处理"""
-        tabs = ["人脸识别", "人脸录入", "数据管理", "考勤管理", "系统设置"]
-        if index < len(tabs):
-            self.mode_label.setText(f"模式: {tabs[index]}")
-            self.current_mode = tabs[index].replace("人脸", "").replace("系统", "").replace("管理", "").lower()
-            
-            # 如果切换到数据管理标签页，刷新数据
-            if index == 2:  # 数据管理
-                self.refresh_data()
-            elif index == 3:  # 考勤管理
-                self.update_attendance_table()
-    
-    def show_system_info(self):
-        """显示系统信息"""
+        tab_name = self.tabs.tabText(index)
+        self.mode_label.setText(f"模式: {tab_name}")
+
+    def update_info_data(self):
+        """更新信息数据（每10秒更新一次）- 修复问题3"""
         try:
-            info = f"""
-智能人脸识别系统 v1.0
+            if not self.is_recognizing:
+                return
 
-系统信息:
-• Python版本: {sys.version.split()[0]}
-• Qt版本: {qVersion()}
-• 人脸数量: {len(self.face_database)}
-• 模型状态: {self.model_status}
-• 数据库状态: 正常
-• API状态: {'运行中' if self.api_running else '已停止'}
+            self.update_log("正在更新信息数据...")
 
-模型配置:
-• 特征点预测器: {os.path.basename(self.config['shape_predictor_path'])}
-• 人脸识别模型: {os.path.basename(self.config['face_recognition_model_path'])}
-• 仅使用本地模型: {'是' if self.config['use_local_models_only'] else '否'}
+            # 1. 更新统计信息
+            self.update_stats()
 
-功能模块:
-• 人脸识别 ✓
-• 人脸录入 ✓
-• 数据管理 ✓
-• 考勤管理 ✓
-• API服务 ✓
-• 本地模型加载 ✓
-"""
-            QMessageBox.information(self, "系统信息", info)
-            
+            # 2. 刷新识别历史记录
+            if hasattr(self, 'recognition_history') and self.recognition_history:
+                recent_history = self.recognition_history[-5:]  # 获取最近5条记录
+                history_str = "最近识别: " + ", ".join([f"{item['name']}({item['confidence']:.2f})"
+                                                        for item in recent_history])
+                self.update_log(history_str)
+
+            # 3. 检查并更新数据库连接状态
+            if hasattr(self.database, 'db_conn') and self.database.db_conn:
+                try:
+                    self.database.db_cursor.execute("SELECT 1")
+                    db_status = "正常"
+                except Exception as e:
+                    db_status = f"异常: {str(e)}"
+                self.update_log(f"数据库连接状态: {db_status}")
+
+            # 4. 更新用户数量信息
+            current_users = len(self.face_database)
+            self.update_log(f"当前用户数量: {current_users}")
+
+            # 5. 更新摄像头状态信息
+            camera_status = "开启" if self.is_camera_running else "关闭"
+            self.update_log(f"摄像头状态: {camera_status}")
+
+            # 6. 更新识别模式信息
+            recognition_mode = "稳定化" if self.stability_control.isChecked() else "实时"
+            self.update_log(f"识别模式: {recognition_mode}")
+
+            self.update_log("信息数据更新完成")
+
         except Exception as e:
-            self.update_log(f"显示系统信息失败: {str(e)}")
-    
-    def exit_system(self):
-        """退出系统"""
+            self.update_log(f"更新信息数据失败: {str(e)}")
+
+    def update_all_stats(self):
+        """更新所有统计信息"""
         try:
-            reply = QMessageBox.question(self, "确认退出", "确定要退出系统吗？", 
-                                        QMessageBox.Yes | QMessageBox.No)
-            if reply == QMessageBox.Yes:
-                # 清理资源
-                self.stop_camera()
-                self.stop_recognition()
-                self.stop_attendance()
-                
-                if self.api_running:
-                    self.stop_api_service()
-                
-                # 关闭数据库连接
-                if hasattr(self, 'db_conn'):
-                    self.db_conn.close()
-                
-                self.update_log("系统退出")
-                QApplication.quit()
-                
+            # 更新界面统计显示
+            self.update_stats()
+
+            # 更新考勤统计
+            if hasattr(self.database, 'get_attendance_records'):
+                today = datetime.now().strftime('%Y-%m-%d')
+                attendance_records = self.database.get_attendance_records(today)
+                self.total_attendance = len(attendance_records)
+                self.update_log(f"今日考勤记录: {self.total_attendance} 条")
+
         except Exception as e:
-            self.update_log(f"系统退出失败: {str(e)}")
-    
+            self.update_log(f"更新统计信息失败: {str(e)}")
+
+    def initiate_checkout(self, name):
+        """初始化签退流程（修复需求3）"""
+        self.database.initiate_checkout(name)
+
+    def perform_checkout_recognition(self):
+        """执行签退人脸识别（修复需求3）"""
+        self.models.perform_checkout_recognition()
+
+    def complete_checkout(self, name, confidence):
+        """完成签退（修复需求3）"""
+        self.database.complete_checkout(name, confidence)
+
+    # 新增：考勤相关方法
+    def check_in(self):
+        """签到"""
+        try:
+            if not self.is_attendance_running:
+                QMessageBox.warning(self, "警告", "请先开始考勤")
+                return
+
+            if not self.current_attendance_user:
+                QMessageBox.warning(self, "警告", "请先进行人脸识别")
+                return
+
+            # 执行签到
+            success, message = self.database.check_in(self.current_attendance_user)
+            if success:
+                self.attendance_status = "已签到"
+                self.attendance_status_label.setText(f"考勤状态: 已签到 - {self.current_attendance_user}")
+                self.attendance_status_label.setStyleSheet("color: blue;")
+
+                # 更新按钮状态
+                self.check_in_btn.setEnabled(False)
+                self.check_out_btn.setEnabled(True)
+
+                self.update_log(f"签到成功: {self.current_attendance_user}")
+                QMessageBox.information(self, "成功", f"签到成功: {self.current_attendance_user}")
+
+                # 刷新考勤记录
+                self.refresh_attendance_records()
+            else:
+                self.update_log(f"签到失败: {message}")
+                QMessageBox.warning(self, "警告", f"签到失败: {message}")
+
+        except Exception as e:
+            self.update_log(f"签到操作失败: {str(e)}")
+            QMessageBox.critical(self, "错误", f"签到操作失败: {str(e)}")
+
+    def check_out(self):
+        """签退"""
+        try:
+            if not self.is_attendance_running:
+                QMessageBox.warning(self, "警告", "请先开始考勤")
+                return
+
+            if not self.current_attendance_user:
+                QMessageBox.warning(self, "警告", "请先进行人脸识别")
+                return
+
+            # 执行签退
+            success, message = self.database.check_out(self.current_attendance_user)
+            if success:
+                self.attendance_status = "已签退"
+                self.attendance_status_label.setText(f"考勤状态: 已签退 - {self.current_attendance_user}")
+                self.attendance_status_label.setStyleSheet("color: orange;")
+
+                # 更新按钮状态
+                self.check_in_btn.setEnabled(True)
+                self.check_out_btn.setEnabled(False)
+                self.current_attendance_user = None
+                self.current_user_label.setText("当前用户: -")
+
+                self.update_log(f"签退成功: {self.current_attendance_user}")
+                QMessageBox.information(self, "成功", f"签退成功: {self.current_attendance_user}")
+
+                # 刷新考勤记录
+                self.refresh_attendance_records()
+            else:
+                self.update_log(f"签退失败: {message}")
+                QMessageBox.warning(self, "警告", f"签退失败: {message}")
+
+        except Exception as e:
+            self.update_log(f"签退操作失败: {str(e)}")
+            QMessageBox.critical(self, "错误", f"签退操作失败: {str(e)}")
+
+    def auto_attendance(self):
+        """智能考勤 - 自动判断签到或签退"""
+        try:
+            if not self.is_attendance_running:
+                QMessageBox.warning(self, "警告", "请先开始考勤")
+                return
+
+            if not self.current_attendance_user:
+                QMessageBox.warning(self, "警告", "请先进行人脸识别")
+                return
+
+            # 检查当前考勤状态
+            today = datetime.now().strftime('%Y-%m-%d')
+            user_attendance = self.database.get_user_attendance_today(self.current_attendance_user, today)
+
+            if not user_attendance:
+                # 没有考勤记录，执行签到
+                self.check_in()
+            elif user_attendance['status'] == 'checked_in' and not user_attendance['check_out_time']:
+                # 已签到但未签退，执行签退
+                self.check_out()
+            elif user_attendance['status'] == 'checked_out':
+                # 已签退，提示用户
+                QMessageBox.information(self, "提示", "今日考勤已完成")
+            else:
+                # 其他情况，执行签到
+                self.check_in()
+
+        except Exception as e:
+            self.update_log(f"智能考勤失败: {str(e)}")
+            QMessageBox.critical(self, "错误", f"智能考勤失败: {str(e)}")
+
+    def refresh_attendance_records(self):
+        """刷新考勤记录"""
+        try:
+            today = datetime.now().strftime('%Y-%m-%d')
+            records = self.database.get_attendance_records(today)
+
+            # 更新表格
+            self.attendance_table.setRowCount(0)
+            for record in records:
+                row = self.attendance_table.rowCount()
+                self.attendance_table.insertRow(row)
+
+                # 计算工作时长
+                work_hours = "0"
+                if record['check_in_time'] and record['check_out_time']:
+                    time_diff = record['check_out_time'] - record['check_in_time']
+                    total_seconds = time_diff.total_seconds()
+                    hours = int(total_seconds // 3600)
+                    minutes = int((total_seconds % 3600) // 60)
+                    work_hours = f"{hours}小时{minutes}分钟"
+
+                self.attendance_table.setItem(row, 0, QTableWidgetItem(record['name']))
+                self.attendance_table.setItem(row, 1, QTableWidgetItem(
+                    record['check_in_time'].strftime('%H:%M:%S') if record['check_in_time'] else '-'))
+                self.attendance_table.setItem(row, 2, QTableWidgetItem(
+                    record['check_out_time'].strftime('%H:%M:%S') if record['check_out_time'] else '-'))
+                self.attendance_table.setItem(row, 3, QTableWidgetItem(record['status']))
+                self.attendance_table.setItem(row, 4, QTableWidgetItem(record.get('location', '默认位置')))
+                self.attendance_table.setItem(row, 5, QTableWidgetItem(work_hours))
+
+            # 更新统计信息
+            checked_in_count = len([r for r in records if r['status'] == 'checked_in'])
+            checked_out_count = len([r for r in records if r['status'] == 'checked_out'])
+            absent_count = self.total_users - checked_in_count
+
+            self.attendance_stats_label.setText(
+                f"今日统计: 签到 {checked_in_count} 人 | 签退 {checked_out_count} 人 | 缺勤 {absent_count} 人")
+
+            self.update_log(f"考勤记录刷新完成，共 {len(records)} 条记录")
+
+        except Exception as e:
+            self.update_log(f"刷新考勤记录失败: {str(e)}")
+
+    def set_current_attendance_user(self, name):
+        """设置当前考勤用户"""
+        try:
+            self.current_attendance_user = name
+            self.current_user_label.setText(f"当前用户: {name}")
+
+            # 检查用户考勤状态
+            today = datetime.now().strftime('%Y-%m-%d')
+            user_attendance = self.database.get_user_attendance_today(name, today)
+
+            if not user_attendance:
+                # 未考勤
+                self.attendance_status = "未签到"
+                self.check_in_btn.setEnabled(True)
+                self.check_out_btn.setEnabled(False)
+                self.attendance_status_label.setText(f"考勤状态: 未签到 - {name}")
+                self.attendance_status_label.setStyleSheet("color: red;")
+            elif user_attendance['status'] == 'checked_in' and not user_attendance['check_out_time']:
+                # 已签到但未签退
+                self.attendance_status = "已签到"
+                self.check_in_btn.setEnabled(False)
+                self.check_out_btn.setEnabled(True)
+                self.attendance_status_label.setText(f"考勤状态: 已签到 - {name}")
+                self.attendance_status_label.setStyleSheet("color: blue;")
+            elif user_attendance['status'] == 'checked_out':
+                # 已签退
+                self.attendance_status = "已签退"
+                self.check_in_btn.setEnabled(False)
+                self.check_out_btn.setEnabled(False)
+                self.attendance_status_label.setText(f"考勤状态: 已签退 - {name}")
+                self.attendance_status_label.setStyleSheet("color: orange;")
+
+            self.update_log(f"设置考勤用户: {name}")
+
+        except Exception as e:
+            self.update_log(f"设置考勤用户失败: {str(e)}")
+
+    def open_api_test_page(self):
+        """打开API测试页面"""
+        try:
+            port = self.config.get('api_port', 5000)
+            url = f"http://localhost:{port}/api_test"
+
+            # 尝试打开网页
+            webbrowser.open(url)
+            self.update_log(f"正在打开API测试页面: {url}")
+
+            # 更新API信息标签
+            self.api_info_label.setText(f"API服务状态: 运行中 | 端口: {port} | 测试页面已打开")
+
+        except Exception as e:
+            self.update_log(f"打开API测试页面失败: {str(e)}")
+            QMessageBox.warning(self, "警告", f"打开API测试页面失败:\n{str(e)}")
+
     def closeEvent(self, event):
-        """窗口关闭事件"""
-        self.exit_system()
-        event.ignore()  # 让exit_system处理退出
+        """关闭事件处理"""
+        try:
+            # 停止所有服务
+            self.stop_recognition()
+            self.stop_camera()
+            self.stop_attendance()
+            self.stop_api_service()
+            self.stop_attendance_camera()
+
+            # 停止所有定时器
+            if self.recognition_timer.isActive():
+                self.recognition_timer.stop()
+            if self.info_update_timer.isActive():
+                self.info_update_timer.stop()
+
+            # 保存数据
+            self.database.save_face_database()
+
+            # 关闭数据库连接
+            if hasattr(self.database, 'db_conn') and self.database.db_conn:
+                self.database.db_conn.close()
+
+            self.update_log("系统关闭成功")
+            event.accept()
+        except Exception as e:
+            self.update_log(f"关闭系统时出错: {str(e)}")
+            event.accept()
+
+    def start_api_service(self):
+        """启动API服务"""
+        try:
+            if not API_AVAILABLE:
+                self.update_log("API服务不可用，请安装Flask: pip install flask flask-cors waitress")
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "警告", "API服务依赖未安装\n\n请执行: pip install flask flask-cors waitress")
+                return False
+
+            if self.api_service and self.api_service.start_service():
+                self.update_log("API服务启动成功")
+
+                # 更新按钮状态
+                self.start_api_btn.setEnabled(False)
+                self.stop_api_btn.setEnabled(True)
+                self.open_test_page_btn.setEnabled(True)  # 启用测试页面按钮
+
+                # 在状态栏显示API状态
+                self.api_status_label.setText("API: 运行中")
+                self.api_status_label.setStyleSheet("color: green;")
+
+                # 更新API信息标签
+                self.api_info_label.setText(f"API服务状态: 运行中 | 端口: {self.config.get('api_port', 5000)}")
+
+                return True
+            else:
+                self.update_log("API服务启动失败")
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "警告", "API服务启动失败，请查看日志")
+                return False
+
+        except Exception as e:
+            self.update_log(f"启动API服务失败: {str(e)}")
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "错误", f"启动API服务失败: {str(e)}")
+            return False
+
+    def stop_api_service(self):
+        """停止API服务"""
+        try:
+            if self.api_service and self.api_service.stop_service():
+                self.update_log("API服务停止成功")
+
+                # 更新按钮状态
+                self.start_api_btn.setEnabled(True)
+                self.stop_api_btn.setEnabled(False)
+                self.open_test_page_btn.setEnabled(False)  # 禁用测试页面按钮
+
+                # 在状态栏显示API状态
+                self.api_status_label.setText("API: 已停止")
+                self.api_status_label.setStyleSheet("color: red;")
+
+                # 更新API信息标签
+                self.api_info_label.setText(f"API服务状态: 已停止 | 端口: {self.config.get('api_port', 5000)}")
+
+                return True
+            else:
+                self.update_log("API服务停止失败")
+                return False
+
+        except Exception as e:
+            self.update_log(f"停止API服务失败: {str(e)}")
+            return False
+
 
 def main():
     """主函数"""
     try:
         app = QApplication(sys.argv)
-        app.setStyle('Fusion')
-        
-        # 设置应用图标（如果有）
-        try:
-            app.setWindowIcon(QIcon.fromTheme('camera'))
-        except:
-            pass
-        
-        # 创建主窗口
         window = FaceRecognitionSystem()
         window.show()
-        
         sys.exit(app.exec_())
-        
     except Exception as e:
         print(f"系统启动失败: {str(e)}")
-        import traceback
-        traceback.print_exc()
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,72 @@
+import fileinput
+
+# 修改人脸丢失时的处理逻辑
+replace_lines = []
+in_target_section = False
+
+for line in fileinput.input('models.py', inplace=True):
+    if '        else:' in line and '            # 未检测到人脸时，清除固定结果（模拟动作幅度大时重新识别）' in next(fileinput.input('models.py')):
+        # 回退一行
+        fileinput.input('models.py').seek(fileinput.input('models.py').tell() - len(line))
+        in_target_section = True
+        # 开始替换
+        print('        else:')
+        print('            # 修复问题1：优化人脸丢失处理，减少误清除')
+        print('            # 未检测到人脸时，延迟清除固定结果，提高稳定性')
+        print('            face_id = 0')
+        print('            if face_id in self.parent.fixed_recognition:')
+        print('                # 检查固定结果是否是暂停时固定的')
+        print('                fixed_result = self.parent.fixed_recognition[face_id]')
+        print('                if fixed_result.get(\'paused\', False):')
+        print('                    # 如果是暂停时固定的结果，保持不变')
+        print('                    self.parent.result_label.setText(f"识别结果: <b>{fixed_result[\'name\']}</b>")')
+        print('                    self.parent.confidence_label.setText(f"置信度: {fixed_result[\'confidence\']:.3f}")')
+        print('                    self.parent.stability_label.setText("稳定性: 固定")')
+        print('                    self.parent.fixed_label.setText("状态: 已暂停")')
+        print('                    self.parent.fixed_label.setStyleSheet("font-size: 14px; color: orange;")')
+        print('                    ')
+        print('                    # 从数据库获取用户信息显示')
+        print('                    display_name = fixed_result[\'name\']')
+        print('                    if display_name in self.parent.face_database:')
+        print('                        user_info = self.parent.face_database[display_name].get(\'info\', {})')
+        print('                        age = user_info.get(\'age\', \'\')')
+        print('                        gender = user_info.get(\'gender\', \'\')')
+        print('                        department = user_info.get(\'department\', \'\')')
+        print('                        age_text = f"{age}岁" if age and age.isdigit() else ""')
+        print('                        gender_text = gender if gender else ""')
+        print('                        dept_text = f" | 部门: {department}" if department else ""')
+        print('                        if age_text and gender_text:')
+        print('                            self.parent.age_gender_label.setText(f"年龄/性别: {age_text}/{gender_text}{dept_text}")')
+        print('                    return')
+        print('                ')
+        print('                # 如果不是暂停固定的结果，延迟清除')
+        print('                fixed_name = fixed_result[\'name\']')
+        print('                fixed_time = fixed_result.get(\'fixed_at\', datetime.now())')
+        print('                time_since_fixed = (datetime.now() - fixed_time).total_seconds()')
+        print('                ')
+        print('                # 固定结果保持3秒后再清除，提高稳定性')
+        print('                if time_since_fixed < 3:')
+        print('                    self.parent.result_label.setText(f"识别结果: <b>{fixed_name}</b>")')
+        print('                    self.parent.confidence_label.setText(f"置信度: {fixed_result[\'confidence\']:.3f}")')
+        print('                    self.parent.stability_label.setText("稳定性: 固定")')
+        print('                    self.parent.fixed_label.setText("状态: 已固定")')
+        print('                    self.parent.fixed_label.setStyleSheet("font-size: 14px; color: green;")')
+        print('                    return')
+        print('                ')
+        print('                # 超过3秒未检测到人脸，清除固定结果')
+        print('                self.parent.update_log(f"人脸丢失超过3秒，清除固定结果: {fixed_name}")')
+        print('                del self.parent.fixed_recognition[face_id]')
+        print('            ')
+        print('            # 未检测到人脸')
+        print('            self.parent.result_label.setText("未检测到人脸")')
+        print('            self.parent.confidence_label.setText("置信度: -")')
+        print('            self.parent.stability_label.setText("稳定性: -")')
+        print('            self.parent.fixed_label.setText("状态: 实时")')
+        print('            self.parent.fixed_label.setStyleSheet("font-size: 14px; color: blue;")')
+        print('            self.parent.age_gender_label.setText("年龄/性别: -")')
+        print('            self.parent.emotion_label.setText("情绪: -")')
+        print('            self.parent.mask_label.setText("口罩: -")')
+    else:
+        print(line, end='')
+
+print("人脸丢失处理逻辑修改完成")

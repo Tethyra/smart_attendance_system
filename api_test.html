@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能人脸识别系统 - API平台</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            color: #333;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 30px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+            position: relative;
+            overflow: hidden;
+        }
+
+        header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 5px;
+            background: linear-gradient(90deg, #8a2387, #e94057, #f27121);
+        }
+
+        h1 {
+            color: #1a2a6c;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #8a2387, #e94057, #f27121);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+        }
+
+        .api-status {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 15px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+
+        .status-online {
+            background-color: #4CAF50;
+            box-shadow: 0 0 10px #4CAF50;
+        }
+
+        .status-offline {
+            background-color: #f44336;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #8a2387, #e94057, #f27121);
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.12);
+        }
+
+        .card h2 {
+            color: #1a2a6c;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f0f0f0;
+            display: flex;
+            align-items: center;
+        }
+
+        .card h2 i {
+            margin-right: 10px;
+            font-size: 1.5rem;
+            background: linear-gradient(90deg, #8a2387, #e94057, #f27121);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #444;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: border 0.3s, box-shadow 0.3s;
+            background: #f9f9f9;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            border-color: #8a2387;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(138, 35, 135, 0.2);
+        }
+
+        button {
+            background: linear-gradient(90deg, #8a2387, #e94057, #f27121);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button i {
+            margin-right: 8px;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-group button {
+            flex: 1;
+        }
+
+        .response-area {
+            margin-top: 20px;
+        }
+
+        .response-title {
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #1a2a6c;
+        }
+
+        .response-box {
+            background: #f8f9fa;
+            border: 1px solid #eaeaea;
+            border-radius: 10px;
+            padding: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 0.9rem;
+            white-space: pre-wrap;
+        }
+
+        .image-preview {
+            max-width: 100%;
+            max-height: 200px;
+            margin-top: 15px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat-item {
+            background: linear-gradient(135deg, #8a2387, #e94057, #f27121);
+            color: white;
+            padding: 15px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #666;
+            padding: 20px;
+            font-size: 0.9rem;
+        }
+
+        .api-url {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        /* 用户信息样式 */
+        .user-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+        }
+
+        .user-card {
+            background: white;
+            border-radius: 15px;
+            padding: 15px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+            border-left: 4px solid #8a2387;
+        }
+
+        .user-name {
+            font-weight: bold;
+            font-size: 1.1rem;
+            margin-bottom: 5px;
+            color: #333;
+        }
+
+        .user-details {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .user-details div {
+            margin-bottom: 3px;
+        }
+
+        /* 考勤记录样式 */
+        .attendance-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .attendance-item {
+            background: white;
+            border-radius: 10px;
+            padding: 12px;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05);
+            border-left: 4px solid #4CAF50;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .attendance-item.check-out {
+            border-left-color: #f44336;
+        }
+
+        .attendance-info {
+            flex: 1;
+        }
+
+        .attendance-name {
+            font-weight: bold;
+            margin-bottom: 3px;
+        }
+
+        .attendance-details {
+            color: #666;
+            font-size: 0.85rem;
+        }
+
+        .attendance-time {
+            font-size: 0.9rem;
+            color: #888;
+        }
+
+        /* 人脸识别结果样式 */
+        .face-result {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05);
+            margin-bottom: 10px;
+        }
+
+        .face-name {
+            font-weight: bold;
+            font-size: 1.1rem;
+            margin-bottom: 5px;
+            color: #333;
+        }
+
+        .face-confidence {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .confidence-bar {
+            height: 6px;
+            background: #e0e0e0;
+            border-radius: 3px;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #8a2387, #e94057);
+            border-radius: 3px;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-robot"></i> 智能人脸识别系统</h1>
+            <p class="subtitle">API功能测试平台</p>
+            <div class="api-status">
+                <div class="status-indicator status-online" id="statusIndicator"></div>
+                <span id="statusText">API服务运行中</span>
+            </div>
+        </header>
+
+        <div class="dashboard">
+            <!-- 系统状态卡片 -->
+            <div class="card">
+                <h2><i class="fas fa-heartbeat"></i> 系统状态</h2>
+                <div class="form-group">
+                    <p>检查系统运行状态和健康情况</p>
+                </div>
+                <div class="btn-group">
+                    <button id="healthCheckBtn">
+                        <i class="fas fa-stethoscope"></i> 健康检查
+                    </button>
+                    <button id="statusCheckBtn">
+                        <i class="fas fa-info-circle"></i> 系统状态
+                    </button>
+                </div>
+                <div class="response-area">
+                    <div class="response-title">响应结果:</div>
+                    <div class="response-box" id="statusResponse"></div>
+                </div>
+            </div>
+
+            <!-- 用户管理卡片 -->
+            <div class="card">
+                <h2><i class="fas fa-users"></i> 用户管理</h2>
+                <div class="form-group">
+                    <p>获取已注册用户列表和详细信息</p>
+                </div>
+                <button id="getUsersBtn">
+                    <i class="fas fa-list"></i> 获取用户列表
+                </button>
+                <div class="response-area">
+                    <div class="response-title">用户数据:</div>
+                    <div class="response-box" id="usersResponse">
+                        <div class="user-list" id="usersList"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 考勤管理卡片 -->
+            <div class="card">
+                <h2><i class="fas fa-clipboard-check"></i> 考勤管理</h2>
+                <div class="form-group">
+                    <label for="userName">用户名:</label>
+                    <input type="text" id="userName" placeholder="输入用户名" value="测试用户">
+                </div>
+                <div class="form-group">
+                    <label for="location">位置:</label>
+                    <input type="text" id="location" placeholder="输入位置" value="办公室">
+                </div>
+                <div class="btn-group">
+                    <button id="checkInBtn">
+                        <i class="fas fa-sign-in-alt"></i> 签到
+                    </button>
+                    <button id="checkOutBtn">
+                        <i class="fas fa-sign-out-alt"></i> 签退
+                    </button>
+                </div>
+                <div class="btn-group">
+                    <button id="getRecordsBtn">
+                        <i class="fas fa-history"></i> 考勤记录
+                    </button>
+                </div>
+                <div class="response-area">
+                    <div class="response-title">考勤结果:</div>
+                    <div class="response-box" id="attendanceResponse">
+                        <div class="attendance-list" id="attendanceList"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 人脸识别卡片 -->
+            <div class="card">
+                <h2><i class="fas fa-user-circle"></i> 人脸识别</h2>
+                <div class="form-group">
+                    <label for="imageFile">选择图片文件:</label>
+                    <input type="file" id="imageFile" accept="image/*">
+                </div>
+                <div class="form-group">
+                    <label>或使用base64数据:</label>
+                    <textarea id="imageData" placeholder="输入base64编码的图片数据" rows="4"></textarea>
+                </div>
+                <button id="faceRecognitionBtn">
+                    <i class="fas fa-search"></i> 人脸识别
+                </button>
+                <div class="response-area">
+                    <div class="response-title">识别结果:</div>
+                    <div class="response-box" id="faceResponse">
+                        <div id="faceResults"></div>
+                    </div>
+                </div>
+                <img id="imagePreview" class="image-preview" alt="图片预览">
+            </div>
+
+            <!-- 系统统计卡片 -->
+            <div class="card">
+                <h2><i class="fas fa-chart-bar"></i> 系统统计</h2>
+                <div class="stats">
+                    <div class="stat-item">
+                        <div class="stat-label">总用户数</div>
+                        <div class="stat-value" id="totalUsers">0</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">识别次数</div>
+                        <div class="stat-value" id="totalRecognitions">0</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">考勤记录</div>
+                        <div class="stat-value" id="totalAttendance">0</div>
+                    </div>
+                </div>
+                <button id="refreshStatsBtn" style="margin-top: 20px; width: 100%;">
+                    <i class="fas fa-sync-alt"></i> 刷新统计
+                </button>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>智能人脸识别系统 API测试平台 &copy; 2024</p>
+            <p class="api-url">API地址: http://localhost:5000</p>
+        </div>
+    </div>
+
+    <script>
+        // API基础URL
+        const API_BASE_URL = 'http://localhost:5000';
+
+        // DOM元素
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusText = document.getElementById('statusText');
+        const statusResponse = document.getElementById('statusResponse');
+        const usersResponse = document.getElementById('usersResponse');
+        const usersList = document.getElementById('usersList');
+        const attendanceResponse = document.getElementById('attendanceResponse');
+        const attendanceList = document.getElementById('attendanceList');
+        const faceResponse = document.getElementById('faceResponse');
+        const faceResults = document.getElementById('faceResults');
+        const imagePreview = document.getElementById('imagePreview');
+        const totalUsers = document.getElementById('totalUsers');
+        const totalRecognitions = document.getElementById('totalRecognitions');
+        const totalAttendance = document.getElementById('totalAttendance');
+
+        // 初始化 - 检查API状态
+        document.addEventListener('DOMContentLoaded', function() {
+            checkApiStatus();
+            refreshStats();
+        });
+
+        // 检查API状态
+        async function checkApiStatus() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/health`);
+                if (response.ok) {
+                    setApiStatus(true, 'API服务运行正常');
+                } else {
+                    setApiStatus(false, 'API服务响应异常');
+                }
+            } catch (error) {
+                setApiStatus(false, 'API服务无法访问');
+                console.error('API状态检查失败:', error);
+            }
+        }
+
+        // 设置API状态显示
+        function setApiStatus(online, message) {
+            if (online) {
+                statusIndicator.className = 'status-indicator status-online';
+                statusText.textContent = message;
+            } else {
+                statusIndicator.className = 'status-indicator status-offline';
+                statusText.textContent = message;
+            }
+        }
+
+        // 健康检查
+        document.getElementById('healthCheckBtn').addEventListener('click', async function() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/health`);
+                const data = await response.json();
+                statusResponse.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                statusResponse.textContent = `错误: ${error.message}`;
+            }
+        });
+
+        // 系统状态检查
+        document.getElementById('statusCheckBtn').addEventListener('click', async function() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/status`);
+                const data = await response.json();
+                statusResponse.textContent = JSON.stringify(data, null, 2);
+
+                // 更新统计信息
+                if (data.status === 'success') {
+                    totalUsers.textContent = data.data.total_users || 0;
+                    totalRecognitions.textContent = data.data.total_recognitions || 0;
+                    totalAttendance.textContent = data.data.total_attendance || 0;
+                }
+            } catch (error) {
+                statusResponse.textContent = `错误: ${error.message}`;
+            }
+        });
+
+        // 获取用户列表
+        document.getElementById('getUsersBtn').addEventListener('click', async function() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/users`);
+                const data = await response.json();
+
+                // 清空之前的用户列表
+                usersList.innerHTML = '';
+
+                if (data.status === 'success') {
+                    // 更新用户统计
+                    totalUsers.textContent = data.data.total || 0;
+
+                    // 创建用户卡片
+                    data.data.users.forEach(user => {
+                        const userCard = document.createElement('div');
+                        userCard.className = 'user-card';
+
+                        userCard.innerHTML = `
+                            <div class="user-name">${user.name || '未知用户'}</div>
+                            <div class="user-details">
+                                <div><strong>部门:</strong> ${user.department || '未分配'}</div>
+                                <div><strong>性别:</strong> ${user.gender || '未知'}</div>
+                                <div><strong>照片数量:</strong> ${user.photo_count || 0}</div>
+                                ${user.id ? `<div><strong>ID:</strong> ${user.id}</div>` : ''}
+                            </div>
+                        `;
+
+                        usersList.appendChild(userCard);
+                    });
+
+                    // 如果没有用户
+                    if (data.data.users.length === 0) {
+                        usersList.innerHTML = '<p style="text-align: center; color: #666;">暂无用户数据</p>';
+                    }
+                } else {
+                    usersList.innerHTML = `<p style="color: #f44336;">获取用户列表失败: ${data.message || '未知错误'}</p>`;
+                }
+            } catch (error) {
+                usersList.innerHTML = `<p style="color: #f44336;">错误: ${error.message}</p>`;
+            }
+        });
+
+        // 签到
+        document.getElementById('checkInBtn').addEventListener('click', async function() {
+            const userName = document.getElementById('userName').value;
+            const location = document.getElementById('location').value;
+
+            if (!userName) {
+                alert('请输入用户名');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/attendance/check_in`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: userName,
+                        location: location
+                    })
+                });
+                const data = await response.json();
+
+                // 显示签到结果
+                if (data.status === 'success') {
+                    attendanceList.innerHTML = `
+                        <div class="attendance-item">
+                            <div class="attendance-info">
+                                <div class="attendance-name">${userName}</div>
+                                <div class="attendance-details">签到成功 - ${location}</div>
+                            </div>
+                            <div class="attendance-time">${new Date().toLocaleTimeString()}</div>
+                        </div>
+                    `;
+                } else {
+                    attendanceList.innerHTML = `<p style="color: #f44336;">签到失败: ${data.message || '未知错误'}</p>`;
+                }
+
+                // 刷新考勤记录
+                if (data.status === 'success') {
+                    getAttendanceRecords();
+                }
+            } catch (error) {
+                attendanceList.innerHTML = `<p style="color: #f44336;">错误: ${error.message}</p>`;
+            }
+        });
+
+        // 签退
+        document.getElementById('checkOutBtn').addEventListener('click', async function() {
+            const userName = document.getElementById('userName').value;
+            const location = document.getElementById('location').value;
+
+            if (!userName) {
+                alert('请输入用户名');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/attendance/check_out`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: userName,
+                        location: location
+                    })
+                });
+                const data = await response.json();
+
+                // 显示签退结果
+                if (data.status === 'success') {
+                    attendanceList.innerHTML = `
+                        <div class="attendance-item check-out">
+                            <div class="attendance-info">
+                                <div class="attendance-name">${userName}</div>
+                                <div class="attendance-details">签退成功 - ${location}</div>
+                            </div>
+                            <div class="attendance-time">${new Date().toLocaleTimeString()}</div>
+                        </div>
+                    `;
+                } else {
+                    attendanceList.innerHTML = `<p style="color: #f44336;">签退失败: ${data.message || '未知错误'}</p>`;
+                }
+
+                // 刷新考勤记录
+                if (data.status === 'success') {
+                    getAttendanceRecords();
+                }
+            } catch (error) {
+                attendanceList.innerHTML = `<p style="color: #f44336;">错误: ${error.message}</p>`;
+            }
+        });
+
+        // 获取考勤记录
+        document.getElementById('getRecordsBtn').addEventListener('click', getAttendanceRecords);
+
+        async function getAttendanceRecords() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/attendance/records`);
+                const data = await response.json();
+
+                // 清空之前的考勤记录
+                attendanceList.innerHTML = '';
+
+                if (data.status === 'success') {
+                    // 更新考勤统计
+                    totalAttendance.textContent = data.data.total || 0;
+
+                    // 创建考勤记录列表
+                    if (data.data.records && data.data.records.length > 0) {
+                        data.data.records.forEach(record => {
+                            const attendanceItem = document.createElement('div');
+                            attendanceItem.className = `attendance-item ${record.type === 'check_out' ? 'check-out' : ''}`;
+
+                            const time = new Date(record.timestamp).toLocaleString();
+
+                            attendanceItem.innerHTML = `
+                                <div class="attendance-info">
+                                    <div class="attendance-name">${record.name}</div>
+                                    <div class="attendance-details">${record.type === 'check_in' ? '签到' : '签退'} - ${record.location}</div>
+                                </div>
+                                <div class="attendance-time">${time}</div>
+                            `;
+
+                            attendanceList.appendChild(attendanceItem);
+                        });
+                    } else {
+                        attendanceList.innerHTML = '<p style="text-align: center; color: #666;">暂无考勤记录</p>';
+                    }
+                } else {
+                    attendanceList.innerHTML = `<p style="color: #f44336;">获取考勤记录失败: ${data.message || '未知错误'}</p>`;
+                }
+            } catch (error) {
+                attendanceList.innerHTML = `<p style="color: #f44336;">错误: ${error.message}</p>`;
+            }
+        }
+
+        // 人脸识别
+        document.getElementById('faceRecognitionBtn').addEventListener('click', async function() {
+            const fileInput = document.getElementById('imageFile');
+            const imageDataInput = document.getElementById('imageData');
+
+            // 清空之前的结果
+            faceResults.innerHTML = '';
+
+            // 优先使用文件上传
+            if (fileInput.files.length > 0) {
+                const formData = new FormData();
+                formData.append('image', fileInput.files[0]);
+
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/face_recognition`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await response.json();
+
+                    // 显示识别结果
+                    if (data.status === 'success') {
+                        if (data.data.faces && data.data.faces.length > 0) {
+                            data.data.faces.forEach(face => {
+                                const faceResult = document.createElement('div');
+                                faceResult.className = 'face-result';
+
+                                const confidencePercent = Math.round(face.confidence * 100);
+
+                                faceResult.innerHTML = `
+                                    <div class="face-name">${face.name || '未知人员'}</div>
+                                    <div class="face-confidence">
+                                        识别置信度: ${confidencePercent}%
+                                        <div class="confidence-bar">
+                                            <div class="confidence-fill" style="width: ${confidencePercent}%"></div>
+                                        </div>
+                                    </div>
+                                `;
+
+                                faceResults.appendChild(faceResult);
+                            });
+
+                            // 更新识别统计
+                            totalRecognitions.textContent = (parseInt(totalRecognitions.textContent) + 1).toString();
+                        } else {
+                            faceResults.innerHTML = '<p style="text-align: center; color: #666;">未检测到人脸</p>';
+                        }
+                    } else {
+                        faceResults.innerHTML = `<p style="color: #f44336;">人脸识别失败: ${data.message || '未知错误'}</p>`;
+                    }
+
+                    // 显示图片预览
+                    const file = fileInput.files[0];
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        imagePreview.src = e.target.result;
+                        imagePreview.style.display = 'block';
+                    };
+                    reader.readAsDataURL(file);
+                } catch (error) {
+                    faceResults.innerHTML = `<p style="color: #f44336;">错误: ${error.message}</p>`;
+                }
+            }
+            // 如果没有文件，尝试使用base64数据
+            else if (imageDataInput.value) {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/face_recognition`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            image_data: imageDataInput.value
+                        })
+                    });
+                    const data = await response.json();
+
+                    // 显示识别结果
+                    if (data.status === 'success') {
+                        if (data.data.faces && data.data.faces.length > 0) {
+                            data.data.faces.forEach(face => {
+                                const faceResult = document.createElement('div');
+                                faceResult.className = 'face-result';
+
+                                const confidencePercent = Math.round(face.confidence * 100);
+
+                                faceResult.innerHTML = `
+                                    <div class="face-name">${face.name || '未知人员'}</div>
+                                    <div class="face-confidence">
+                                        识别置信度: ${confidencePercent}%
+                                        <div class="confidence-bar">
+                                            <div class="confidence-fill" style="width: ${confidencePercent}%"></div>
+                                        </div>
+                                    </div>
+                                `;
+
+                                faceResults.appendChild(faceResult);
+                            });
+
+                            // 更新识别统计
+                            totalRecognitions.textContent = (parseInt(totalRecognitions.textContent) + 1).toString();
+                        } else {
+                            faceResults.innerHTML = '<p style="text-align: center; color: #666;">未检测到人脸</p>';
+                        }
+                    } else {
+                        faceResults.innerHTML = `<p style="color: #f44336;">人脸识别失败: ${data.message || '未知错误'}</p>`;
+                    }
+                } catch (error) {
+                    faceResults.innerHTML = `<p style="color: #f44336;">错误: ${error.message}</p>`;
+                }
+            } else {
+                alert('请选择图片文件或输入base64数据');
+            }
+        });
+
+        // 刷新统计
+        document.getElementById('refreshStatsBtn').addEventListener('click', refreshStats);
+
+        async function refreshStats() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/status`);
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    totalUsers.textContent = data.data.total_users || 0;
+                    totalRecognitions.textContent = data.data.total_recognitions || 0;
+                    totalAttendance.textContent = data.data.total_attendance || 0;
+                }
+            } catch (error) {
+                console.error('刷新统计失败:', error);
+            }
+        }
+
+        // 图片文件预览
+        document.getElementById('imageFile').addEventListener('change', function() {
+            const file = this.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    imagePreview.src = e.target.result;
+                    imagePreview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+
+                // 清空base64输入框
+                document.getElementById('imageData').value = '';
+
+                // 清空之前的识别结果
+                faceResults.innerHTML = '';
+            }
+        });
+    </script>
+</body>
+</html>
